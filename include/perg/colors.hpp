@@ -1,0 +1,10 @@
+#pragma once
+#include <string_view>
+
+namespace Perg::Colors {
+    constexpr std::string_view RESET = "\033[0m";
+    constexpr std::string_view RED   = "\033[31m";
+    constexpr std::string_view GREEN = "\033[32m";
+    constexpr std::string_view BOLD  = "\033[1m";
+    constexpr std::string_view CYAN  = "\033[36m";
+}
