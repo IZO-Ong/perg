@@ -1,5 +1,7 @@
 #include <iostream>
+#include <iomanip>
 #include <string>
+#include <cmath>
 #include "perg/mmap_file.hpp"
 #include "perg/colors.hpp"
 
@@ -39,12 +41,25 @@ int main(int argc, char* argv[]) {
         Perg::MmapFile file(filename);
         std::string_view content = file.view();
 
+        int padding = (file.size() > 0) ? static_cast<int>(std::log10(file.size())) + 1 : 1;
+        if (padding < 4) padding = 4;
+
         size_t pos = content.find(pattern);
-        int count = 0;
+        int match_count = 0;
+        int line_number = 1;
+        size_t last_line_start = std::string_view::npos;
+        size_t current_search_start = 0;
 
         while (pos != std::string_view::npos) {
-            count++;
+            match_count++;
 
+            // calculate line number
+            for (size_t i = current_search_start; i < pos; ++i) {
+                if (content[i] == '\n') line_number++;
+            }
+            current_search_start = pos;
+
+            // line boundaries
             size_t line_start = content.rfind('\n', pos);
             if (line_start == std::string_view::npos) line_start = 0;
             else line_start++;
@@ -52,14 +67,24 @@ int main(int argc, char* argv[]) {
             size_t line_end = content.find('\n', pos);
             if (line_end == std::string_view::npos) line_end = content.size();
 
-            std::string_view prefix = content.substr(line_start, pos - line_start);
-            size_t suffix_start = pos + pattern.size();
-            std::string_view suffix = content.substr(suffix_start, line_end - suffix_start);
+            // duplicate line handling & Aligned Printing
+            if (line_start != last_line_start) {
+                // print aligned Line Number
+                std::cout << Perg::Colors::YELLOW 
+                          << std::setw(padding) << std::left << line_number 
+                          << Perg::Colors::RESET << " | ";
+                
+                std::string_view prefix = content.substr(line_start, pos - line_start);
+                size_t suffix_start = pos + pattern.size();
+                std::string_view suffix = content.substr(suffix_start, line_end - suffix_start);
 
-            std::cout << prefix 
-                    << Perg::Colors::BOLD << Perg::Colors::RED << pattern << Perg::Colors::RESET 
-                    << suffix << "\n";
-
+                std::cout << prefix 
+                          << Perg::Colors::BOLD << Perg::Colors::CYAN << pattern << Perg::Colors::RESET 
+                          << suffix << "\n";
+                
+                last_line_start = line_start;
+            }
+            
             pos = content.find(pattern, pos + pattern.size());
         }
         

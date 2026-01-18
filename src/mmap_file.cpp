@@ -33,4 +33,8 @@ namespace Perg {
     std::string_view MmapFile::view() const {
         return std::string_view(static_cast<const char*>(data_), size_);
     }
+
+    size_t MmapFile::size() const {
+        return size_;
+    }
 }

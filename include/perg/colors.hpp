@@ -7,4 +7,5 @@ namespace Perg::Colors {
     constexpr std::string_view GREEN = "\033[32m";
     constexpr std::string_view BOLD  = "\033[1m";
     constexpr std::string_view CYAN  = "\033[36m";
+    constexpr std::string_view YELLOW  ="\033[33m";
 }
