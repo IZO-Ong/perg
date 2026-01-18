@@ -39,3 +39,15 @@
 
 # debug information files
 *.dwo
+
+# Ignore the build directory
+build/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE-specific files (if you use VS Code or CLion)
+.vscode/
+.idea/
+cmake-build-*/
