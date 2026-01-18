@@ -1,14 +1,39 @@
 #include <iostream>
 #include <string>
+#include <string_view>
 #include "perg/mmap_file.hpp"
 
+// Function to display usage instructions
+void print_help() {
+    std::cout << "perg - A high-performance, zero-copy pattern scanner\n\n"
+              << "Usage:\n"
+              << "  perg <pattern> <file>\n"
+              << "  perg [options]\n\n"
+              << "Options:\n"
+              << "  -h, --help     Show this help message\n\n"
+              << "Example:\n"
+              << "  perg \"error\" system.log\n" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: perg <pattern> <file>" << std::endl;
+    if (argc < 2) {
+        print_help();
         return 1;
     }
 
-    std::string pattern = argv[1];
+    std::string first_arg = argv[1];
+    if (first_arg == "-h" || first_arg == "--help") {
+        print_help();
+        return 0;
+    }
+
+    if (argc < 3) {
+        std::cerr << "Error: Missing file argument.\n";
+        print_help();
+        return 1;
+    }
+
+    std::string_view pattern = argv[1];
     std::string filename = argv[2];
 
     try {
@@ -20,6 +45,7 @@ int main(int argc, char* argv[]) {
 
         while (pos != std::string_view::npos) {
             count++;
+            
             pos = content.find(pattern, pos + pattern.size());
         }
 

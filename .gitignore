@@ -47,7 +47,7 @@ build/
 .DS_Store
 Thumbs.db
 
-# Ignore IDE-specific files (if you use VS Code or CLion)
+# Ignore IDE-specific files
 .vscode/
 .idea/
 cmake-build-*/

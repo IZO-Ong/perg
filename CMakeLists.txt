@@ -13,3 +13,6 @@ file(GLOB SOURCES "src/*.cpp")
 
 # executable
 add_executable(perg ${SOURCES})
+
+# Install the perg binary to the system's 'bin' directory
+install(TARGETS perg DESTINATION bin)
