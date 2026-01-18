@@ -2,34 +2,26 @@
 #include <iomanip>
 #include <string>
 #include <cmath>
+#include <regex>
+#include <unistd.h>
 #include "perg/mmap_file.hpp"
 #include "perg/colors.hpp"
 
 void print_help() {
-    std::cout << "perg - A high-performance, zero-copy pattern scanner\n\n"
+    std::cout << "perg - A high-performance, zero-copy regex pattern scanner\n\n"
               << "Usage:\n"
-              << "  perg <pattern> <file>\n"
-              << "  perg [options]\n\n"
-              << "Options:\n"
-              << "  -h, --help     Show this help message\n\n"
-              << "Example:\n"
-              << "  perg \"error\" system.log\n" << std::endl;
+              << "  perg <regex_pattern> <file>\n" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        print_help();
-        return 1;
-    }
-
-    std::string first_arg = argv[1];
-    if (first_arg == "-h" || first_arg == "--help") {
-        print_help();
-        return 0;
-    }
+    bool use_color = isatty(STDOUT_FILENO);
 
     if (argc < 3) {
-        std::cerr << "Error: Missing file argument.\n";
+        if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
+            print_help();
+            return 0;
+        }
+        std::cerr << "Error: Missing arguments.\n";
         print_help();
         return 1;
     }
@@ -40,54 +32,67 @@ int main(int argc, char* argv[]) {
     try {
         Perg::MmapFile file(filename);
         std::string_view content = file.view();
+        std::regex search_regex(pattern, std::regex::optimize);
 
-        int padding = (file.size() > 0) ? static_cast<int>(std::log10(file.size())) + 1 : 1;
+        int padding = (file.size() > 0) ? static_cast<int>(std::log10(file.size())) + 1 : 4;
         if (padding < 4) padding = 4;
 
-        size_t pos = content.find(pattern);
-        int match_count = 0;
         int line_number = 1;
-        size_t last_line_start = std::string_view::npos;
         size_t current_search_start = 0;
+        
+        const char* s_start = content.data();
+        const char* s_end = content.data() + content.size();
+        std::cregex_iterator iter(s_start, s_end, search_regex);
+        std::cregex_iterator end;
 
-        while (pos != std::string_view::npos) {
-            match_count++;
+        while (iter != end) {
+            std::cmatch match = *iter;
+            size_t pos = match.position();
 
-            // calculate line number
             for (size_t i = current_search_start; i < pos; ++i) {
                 if (content[i] == '\n') line_number++;
             }
-            current_search_start = pos;
 
-            // line boundaries
             size_t line_start = content.rfind('\n', pos);
-            if (line_start == std::string_view::npos) line_start = 0;
-            else line_start++;
-
+            line_start = (line_start == std::string_view::npos) ? 0 : line_start + 1;
             size_t line_end = content.find('\n', pos);
             if (line_end == std::string_view::npos) line_end = content.size();
 
-            // duplicate line handling & Aligned Printing
-            if (line_start != last_line_start) {
-                // print aligned Line Number
-                std::cout << Perg::Colors::YELLOW 
-                          << std::setw(padding) << std::left << line_number 
-                          << Perg::Colors::RESET << " | ";
-                
-                std::string_view prefix = content.substr(line_start, pos - line_start);
-                size_t suffix_start = pos + pattern.size();
-                std::string_view suffix = content.substr(suffix_start, line_end - suffix_start);
+            std::string_view line_content = content.substr(line_start, line_end - line_start);
 
-                std::cout << prefix 
-                          << Perg::Colors::BOLD << Perg::Colors::CYAN << pattern << Perg::Colors::RESET 
-                          << suffix << "\n";
+            // only use colour if in terminal
+            if (use_color) std::cout << Perg::Colors::YELLOW;
+            std::cout << std::setw(padding) << std::left << line_number;
+            if (use_color) std::cout << Perg::Colors::RESET;
+            std::cout << " | ";
+
+            size_t last_printed_pos = 0;
+            auto line_ptr = line_content.data();
+            std::cregex_iterator line_iter(line_ptr, line_ptr + line_content.size(), search_regex);
+
+            for (; line_iter != end; ++line_iter) {
+                std::cmatch line_match = *line_iter;
+                size_t line_internal_pos = line_match.position();
+
+                std::cout << line_content.substr(last_printed_pos, line_internal_pos - last_printed_pos);
                 
-                last_line_start = line_start;
+                if (use_color) std::cout << Perg::Colors::BOLD << Perg::Colors::CYAN;
+                std::cout << line_match.str();
+                if (use_color) std::cout << Perg::Colors::RESET;
+                
+                last_printed_pos = line_internal_pos + line_match.length();
             }
-            
-            pos = content.find(pattern, pos + pattern.size());
+            std::cout << line_content.substr(last_printed_pos) << "\n";
+
+            current_search_start = line_end;
+            while (iter != end && (size_t)iter->position() < line_end) {
+                ++iter;
+            }
         }
         
+    } catch (const std::regex_error& e) {
+        std::cerr << "Regex Error: " << e.what() << std::endl;
+        return 1;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
