@@ -1,0 +1,26 @@
+name: C++ CI (Regression Tests)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake g++ build-essential
+
+    - name: Make regression script executable
+      run: chmod +x tests/regression.sh
+
+    - name: Run Regression Tests
+      run: ./tests/regression.sh
