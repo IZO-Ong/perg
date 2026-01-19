@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <unistd.h>
+#include <getopt.h>
 #include "perg/mmap_file.hpp"
 #include "perg/scanner.hpp"
 
@@ -9,7 +10,7 @@ void print_help() {
               << "Usage:\n"
               << "  perg [options] <pattern> <file>\n\n"
               << "Options:\n"
-              << "  -c    Only print a count of matching lines\n"
+              << "  -c    Only print the total count of pattern occurrences\n"
               << "  -h    Show this help message\n" << std::endl;
 }
 
@@ -17,8 +18,15 @@ int main(int argc, char* argv[]) {
     Perg::ScanOptions options;
     options.use_color = isatty(STDOUT_FILENO);
 
+    static struct option long_options[] = {
+        {"count", no_argument, 0, 'c'},
+        {"help",  no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+
     int opt;
-    while ((opt = getopt(argc, argv, "ch")) != -1) {
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, "ch", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'c':
                 options.count_only = true;
