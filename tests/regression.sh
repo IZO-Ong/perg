@@ -69,6 +69,24 @@ else
     echo -e "${GREEN}PASS${NC}"
 fi
 
+# Test 5: Help Function (-h)
+echo -n "Test $((test_no++)): Help Function (-h)... "
+if ./build/perg -h | grep -iq "usage"; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Help text not found)${NC}"
+    exit 1
+fi
+
+# Test 6: Help Function (--help)
+echo -n "Test $((test_no++)): Help Function (--help)... "
+if ./build/perg --help | grep -iq "usage"; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Help text not found)${NC}"
+    exit 1
+fi
+
 # Cleanup
 rm "$INPUT_FILE" test_output.txt
 echo -e "\n${CYAN}---------------------------------------${NC}"
