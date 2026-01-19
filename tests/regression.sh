@@ -74,7 +74,7 @@ echo -n "Test $((test_no++)): Help Function (-h)... "
 if ./build/perg -h | grep -iq "usage"; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Help text not found)${NC}"
+    echo -e "${RED}FAIL (Command failed or help text missing)${NC}"
     exit 1
 fi
 
@@ -83,7 +83,19 @@ echo -n "Test $((test_no++)): Help Function (--help)... "
 if ./build/perg --help | grep -iq "usage"; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Help text not found)${NC}"
+    echo -e "${RED}FAIL (Command failed or help text missing)${NC}"
+    exit 1
+fi
+
+# Test 7: Count Flag (-c) Total Occurrences
+echo -n "Test $((test_no++)): Count Flag (-c) Total Occurrences... "
+
+actual_count=$(./build/perg -c "test" "$INPUT_FILE" | tr -d '[:space:]')
+
+if [ "$actual_count" -eq 4 ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Expected 4, got '$actual_count')${NC}"
     exit 1
 fi
 
