@@ -5,8 +5,10 @@
 #include <cmath>
 
 namespace Perg {
-    void Scanner::scan(std::string_view content, const std::string& pattern) {
+    int Scanner::scan(std::string_view content, const std::string& pattern) {
         std::regex re(pattern, std::regex::optimize);
+        int total_matches = 0;
+
         int padding = (content.size() > 0) ? static_cast<int>(std::log10(content.size())) + 1 : 4;
         if (padding < 4) padding = 4;
 
@@ -18,22 +20,36 @@ namespace Perg {
         std::cregex_iterator iter(s_start, s_end, re), end;
 
         while (iter != end) {
-            size_t pos = iter->position();
+            if (options_.count_only) {
+                total_matches++;
+                size_t line_end = content.find('\n', iter->position());
+                if (line_end == std::string_view::npos) break;
 
-            for (size_t i = current_search_start; i < pos; ++i) {
-                if (content[i] == '\n') line_number++;
+                while (iter != end && (size_t)iter->position() < line_end) ++iter;
+            } else {
+                size_t pos = iter->position();
+
+                for (size_t i = current_search_start; i < pos; ++i) {
+                    if (content[i] == '\n') line_number++;
+                }
+
+                size_t line_start = content.rfind('\n', pos);
+                line_start = (line_start == std::string_view::npos) ? 0 : line_start + 1;
+                size_t line_end = content.find('\n', pos);
+                if (line_end == std::string_view::npos) line_end = content.size();
+
+                print_line(line_number, content.substr(line_start, line_end - line_start), re, padding);
+
+                current_search_start = line_end;
+                while (iter != end && (size_t)iter->position() < line_end) ++iter;
             }
-
-            size_t line_start = content.rfind('\n', pos);
-            line_start = (line_start == std::string_view::npos) ? 0 : line_start + 1;
-            size_t line_end = content.find('\n', pos);
-            if (line_end == std::string_view::npos) line_end = content.size();
-
-            print_line(line_number, content.substr(line_start, line_end - line_start), re, padding);
-
-            current_search_start = line_end;
-            while (iter != end && (size_t)iter->position() < line_end) ++iter;
         }
+
+        if (options_.count_only) {
+            std::cout << total_matches << "\n";
+        }
+
+        return total_matches;
     }
 
     void Scanner::print_line(int line_no, std::string_view line, const std::regex& re, int padding) {

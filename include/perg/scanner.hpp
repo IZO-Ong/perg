@@ -5,13 +5,14 @@
 namespace Perg {
     struct ScanOptions {
         bool use_color = false;
+        bool count_only = false;
     };
 
     class Scanner {
     public:
         explicit Scanner(ScanOptions options) : options_(options) {}
         
-        void scan(std::string_view content, const std::string& pattern);
+        int scan(std::string_view content, const std::string& pattern);
 
     private:
         ScanOptions options_;
