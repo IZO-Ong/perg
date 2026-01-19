@@ -1,8 +1,16 @@
 #!/bin/bash
-# A script to build and install perg
+set -e
+
 mkdir -p build
 cd build
+
+echo "Configuring..."
 cmake ..
+
+echo "Building..."
 make
+
+echo "Installing to /usr/local/bin..."
 sudo cp perg /usr/local/bin/
-echo "perg has been installed! Try running: perg --help"
+
+echo "Success! Try running: perg --help"
