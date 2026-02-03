@@ -33,6 +33,8 @@ hello world
 this is a test line with 2026 inside
 multiple matches: test, test, and test
 final line
+another test line
+adjacent test line
 EOF
 
 test_no=1
@@ -57,13 +59,13 @@ else
     exit 1
 fi
 
-# Test 3: Multiple Matches
+# Test 3: Multiple Matches on one line
 echo -n "Test $((test_no++)): Multiple Matches on one line... "
 ./build/perg --no-color "test" "$INPUT_FILE" > test_output.txt
-if [ $(grep -o "test" test_output.txt | wc -l) -eq 4 ]; then
+if [ $(grep -o "test" test_output.txt | wc -l) -eq 6 ]; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL${NC}"
+    echo -e "${RED}FAIL (Expected 6 occurrences)${NC}"
     exit 1
 fi
 
@@ -97,10 +99,10 @@ fi
 # Test 7: Count Flag (-c) Total Occurrences
 echo -n "Test $((test_no++)): Count Flag (-c) Total Occurrences... "
 actual_count=$(./build/perg --no-color -c "test" "$INPUT_FILE" | tr -d '[:space:]')
-if [ "$actual_count" -eq 4 ]; then
+if [ "$actual_count" -eq 6 ]; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Expected 4, got '$actual_count')${NC}"
+    echo -e "${RED}FAIL (Expected 6, got '$actual_count')${NC}"
     exit 1
 fi
 
@@ -118,22 +120,23 @@ fi
 echo -n "Test $((test_no++)): Literal Duplicate Line Check... "
 ./build/perg --no-color "test" "$INPUT_FILE" > test_output.txt
 line_count=$(grep -c "test" test_output.txt)
-if [ "$line_count" -eq 2 ]; then
+if [ "$line_count" -eq 4 ]; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Expected 2 unique lines, got $line_count)${NC}"
+    echo -e "${RED}FAIL (Expected 4 unique lines, got $line_count)${NC}"
     exit 1
 fi
 
 # Test 10: Context Formatting
 echo -n "Test $((test_no++)): Context Formatting (-C 1)... "
 ./build/perg --no-color -C 1 "this is a test line" "$INPUT_FILE" > test_output.txt
-# Account for '1' followed by 3 spaces (padding 4)
+# Expected: Line 1 (context), Line 2 (match), Line 3 (context)
 if grep -qE "^1[[:space:]]+- hello world" test_output.txt && \
-   grep -qE "^2[[:space:]]+: this is a test line" test_output.txt; then
+   grep -qE "^2[[:space:]]+: this is a test line" test_output.txt && \
+   grep -qE "^3[[:space:]]+- multiple matches" test_output.txt; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Format mismatch in context)${NC}"
+    echo -e "${RED}FAIL (Format mismatch)${NC}"
     cat -v test_output.txt
     exit 1
 fi
@@ -219,6 +222,26 @@ if ./build/perg -i --no-color "HELLO" "$INPUT_FILE" | grep -q "hello world"; the
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL (Case-insensitive match failed)${NC}"
+    exit 1
+fi
+
+# Test 18: Context Overlap Prevention (Using global input)
+echo -n "Test $((test_no++)): Context Overlap Prevention... "
+# Search for "test" on adjacent lines 5 and 6 with 1 line of context.
+# Line 5 (match) and Line 6 (match) share Line 4 and Line 7 as context.
+# Line 5 should NOT be printed as context for Line 6 if it's already a match.
+./build/perg --no-color -C 1 "another test" "$INPUT_FILE" > test_output.txt
+
+# Count how many times "another test line" (Line 5) appears.
+# Even if it's a match and potentially context for Line 6, it should only appear ONCE.
+occurrences=$(grep -c "another test line" test_output.txt)
+
+if [ "$occurrences" -eq 1 ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Detected duplicate lines in overlap)${NC}"
+    echo "Actual output:"
+    cat test_output.txt
     exit 1
 fi
 

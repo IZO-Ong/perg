@@ -60,7 +60,6 @@ namespace Perg {
         size_t last_newline_count_pos = 0;
         size_t last_printed_pos = 0; 
 
-        // Calculate padding: minimum 4, or log10 of content size
         int padding = (content.size() > 0) ? static_cast<int>(std::log10(content.size())) + 1 : 4;
         if (padding < 4) padding = 4;
 
@@ -91,7 +90,7 @@ namespace Perg {
             if (options_.count_only) return;
 
             size_t context_start = find_backward_nl(content, match_line_start, options_.context_before);
-            
+
             if (last_printed_pos > 0 && context_start > last_printed_pos) {
                 if (options_.context_before > 0 || options_.context_after > 0) {
                     if (options_.use_color) std::cout << Colors::CYAN;
@@ -102,11 +101,23 @@ namespace Perg {
             }
 
             size_t current_pos = std::max(context_start, last_printed_pos);
-            int current_ln = match_ln - (int)std::count(content.data() + context_start, content.data() + match_line_start, '\n');
+            
+            // 3. Anchor the current line number to the match line
+            int current_ln = match_ln - (int)std::count(content.data() + context_start, 
+                                                    content.data() + match_line_start, '\n');
+            
+            // Adjust line number if we skipped already-printed lines
+            if (current_pos > context_start) {
+                current_ln += (int)std::count(content.data() + context_start, 
+                                            content.data() + current_pos, '\n');
+            }
 
+            // 4. Calculate trailing context end
             size_t match_eol = content.find('\n', match_line_start);
             if (match_eol == std::string_view::npos) match_eol = content.size();
-            size_t context_end = find_forward_nl(content, match_eol, options_.context_after);
+            
+            // Find the boundary after the Nth context line
+            size_t context_end = find_forward_nl(content, match_eol, options_.context_after + 1);
 
             while (current_pos < context_end) {
                 size_t next_nl = content.find('\n', current_pos);
@@ -180,6 +191,7 @@ namespace Perg {
         std::cout << std::setw(padding) << std::left << line_no;
         if (options_.use_color) std::cout << Colors::RESET;
         
+        // Grep standard: ':' for match, '-' for context, followed by exactly one space
         std::cout << (is_match ? ": " : "- ");
 
         if (!is_match) {
@@ -187,7 +199,7 @@ namespace Perg {
             return;
         }
 
-        // Highlighting logic for match lines
+        // Highlight matching substrings within the line
         size_t last_pos = 0;
         std::cregex_iterator it(line.data(), line.data() + line.size(), re), end;
         for (; it != end; ++it) {
