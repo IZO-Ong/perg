@@ -1,10 +1,11 @@
-#include <iostream>
-#include <string>
-#include <unistd.h>
-#include <getopt.h>
 #include "perg/exceptions.hpp"
 #include "perg/mmap_file.hpp"
 #include "perg/scanner.hpp"
+
+#include <iostream>
+#include <getopt.h>
+#include <string>
+#include <unistd.h>
 
 void print_help() {
     std::cout << "perg - A high-performance, zero-copy regex pattern scanner\n\n"
