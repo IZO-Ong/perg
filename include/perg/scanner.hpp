@@ -8,6 +8,9 @@ namespace Perg {
         bool use_color = false;
         bool count_only = false;
         bool print_filename = false;
+        bool ignore_case = false;
+        int context_before = 0;
+        int context_after = 0;
     };
 
     class Scanner {
@@ -18,6 +21,6 @@ namespace Perg {
 
     private:
         ScanOptions options_;
-        void print_line(int line_no, std::string_view line, const std::regex& re, int padding, const std::string& filename);
+        void print_line(int line_no, std::string_view line, const std::regex& re, int padding, const std::string& filename, bool is_match);
     };
 }
