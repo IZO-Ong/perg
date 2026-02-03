@@ -102,11 +102,9 @@ namespace Perg {
 
             size_t current_pos = std::max(context_start, last_printed_pos);
             
-            // 3. Anchor the current line number to the match line
             int current_ln = match_ln - (int)std::count(content.data() + context_start, 
                                                     content.data() + match_line_start, '\n');
-            
-            // Adjust line number if we skipped already-printed lines
+
             if (current_pos > context_start) {
                 current_ln += (int)std::count(content.data() + context_start, 
                                             content.data() + current_pos, '\n');
@@ -180,36 +178,37 @@ namespace Perg {
     }
 
     void Scanner::print_line(int line_no, std::string_view line, const std::regex& re, int padding, const std::string& filename, bool is_match) {
+        if (options_.print_line_numbers) {
+            if (options_.use_color) std::cout << Colors::YELLOW;
+            std::cout << std::setw(padding) << std::left << line_no;
+            if (options_.use_color) std::cout << Colors::RESET;
+            
+            std::cout << (is_match ? ": " : "- ");
+        }
+
+        if (!is_match) {
+            std::cout << line;
+        } else {
+            size_t last_pos = 0;
+            std::cregex_iterator it(line.data(), line.data() + line.size(), re), end;
+            for (; it != end; ++it) {
+                std::cout << line.substr(last_pos, it->position() - last_pos);
+                if (options_.use_color) std::cout << Colors::BOLD << Colors::CYAN;
+                std::cout << it->str();
+                if (options_.use_color) std::cout << Colors::RESET;
+                last_pos = it->position() + it->length();
+            }
+            std::cout << line.substr(last_pos);
+        }
+
         if (options_.print_filename) {
+            std::cout << " | ";
             if (options_.use_color) std::cout << Colors::CYAN;
             std::cout << filename;
             if (options_.use_color) std::cout << Colors::RESET;
-            std::cout << (is_match ? ":" : "-");
         }
 
-        if (options_.use_color) std::cout << Colors::YELLOW;
-        std::cout << std::setw(padding) << std::left << line_no;
-        if (options_.use_color) std::cout << Colors::RESET;
-        
-        // Grep standard: ':' for match, '-' for context, followed by exactly one space
-        std::cout << (is_match ? ": " : "- ");
-
-        if (!is_match) {
-            std::cout << line << "\n";
-            return;
-        }
-
-        // Highlight matching substrings within the line
-        size_t last_pos = 0;
-        std::cregex_iterator it(line.data(), line.data() + line.size(), re), end;
-        for (; it != end; ++it) {
-            std::cout << line.substr(last_pos, it->position() - last_pos);
-            if (options_.use_color) std::cout << Colors::BOLD << Colors::CYAN;
-            std::cout << it->str();
-            if (options_.use_color) std::cout << Colors::RESET;
-            last_pos = it->position() + it->length();
-        }
-        std::cout << line.substr(last_pos) << "\n";
+        std::cout << "\n";
     }
 
 }

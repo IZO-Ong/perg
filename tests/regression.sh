@@ -129,7 +129,7 @@ fi
 
 # Test 10: Context Formatting
 echo -n "Test $((test_no++)): Context Formatting (-C 1)... "
-./build/perg --no-color -C 1 "this is a test line" "$INPUT_FILE" > test_output.txt
+./build/perg -n --no-color -C 1 "this is a test line" "$INPUT_FILE" > test_output.txt
 # Expected: Line 1 (context), Line 2 (match), Line 3 (context)
 if grep -qE "^1[[:space:]]+- hello world" test_output.txt && \
    grep -qE "^2[[:space:]]+: this is a test line" test_output.txt && \
@@ -160,13 +160,14 @@ else
 fi
 
 # Test 12: Filename Prefixing Check
-echo -n "Test $((test_no++)): Filename Prefixing Check... "
-./build/perg --no-color "target" "$TEST_DIR" > test_output.txt
-if grep -qE "file1.txt:1[[:space:]]+: target in root" test_output.txt && \
-   grep -qE "sub1/file2.txt:1[[:space:]]+: target in sub1" test_output.txt; then
+echo -n "Test $((test_no++)): Filename Suffix Check (Pipe Format)... "
+./build/perg -n --no-color "target" "$TEST_DIR" > test_output.txt
+
+if grep -qE "^1[[:space:]]+: target in root \| .*file1\.txt" test_output.txt && \
+   grep -qE "^1[[:space:]]+: target in sub1 \| .*sub1/file2\.txt" test_output.txt; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Format mismatch in directory prefix)${NC}"
+    echo -e "${RED}FAIL (Format mismatch with suffix pipe)${NC}"
     cat -v test_output.txt 
     exit 1
 fi

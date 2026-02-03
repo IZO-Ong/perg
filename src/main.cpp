@@ -23,11 +23,13 @@ void print_help() {
               << "  -B <n>                Print <n> lines of leading context before matches\n"
               << "  -C <n>                Print <n> lines of output context (Before and After)\n\n"
               << "Output Formatting:\n"
+              << "  -n, --line-number     Force prefix each line of output with its line number\n"
+              << "  -N, --no-line-number  Suppress line numbers in output\n"
               << "  --color               Use colors to highlight matches (default if terminal)\n"
               << "  --no-color            Disable colors in output\n\n"
               << "Examples:\n"
               << "  perg \"ERROR\" /var/log           Recursive scan of a directory\n"
-              << "  perg -i -C 2 \"main\" src/       Case-insensitive with 2 lines of context\n"
+              << "  perg -n -i -C 2 \"main\" src/    Line numbers, case-insensitive, 2 lines context\n"
               << std::endl;
 }
 
@@ -51,9 +53,12 @@ void process_path(const fs::path& path, const std::string& pattern, Perg::Scanne
 
 int main(int argc, char* argv[]) {
     Perg::ScanOptions options;
+    options.print_line_numbers = isatty(STDOUT_FILENO);
     options.use_color = isatty(STDOUT_FILENO);
 
     static struct option long_options[] = {
+        {"line-number", no_argument, 0, 'n'},
+        {"no-line-number", no_argument, 0, 'N'},
         {"count", no_argument, 0, 'c'},
         {"ignore-case", no_argument, 0, 'i'},
         {"before-context", required_argument, 0, 'B'},
@@ -67,8 +72,10 @@ int main(int argc, char* argv[]) {
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "chiA:B:C:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "chiA:B:C:nN", long_options, &option_index)) != -1) {
         switch (opt) {
+            case 'n': options.print_line_numbers = true; break;
+            case 'N': options.print_line_numbers = false; break;
             case 'c': options.count_only = true; break;
             case 'h': print_help(); return 0;
             case 'i': options.ignore_case = true; break;

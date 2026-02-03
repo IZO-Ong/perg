@@ -5,6 +5,7 @@
 
 namespace Perg {
     struct ScanOptions {
+        bool print_line_numbers = true;
         bool use_color = false;
         bool count_only = false;
         bool print_filename = false;
