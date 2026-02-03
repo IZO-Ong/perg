@@ -1,3 +1,4 @@
+#include "perg/exceptions.hpp"
 #include "perg/mmap_file.hpp"
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -9,19 +10,19 @@ namespace Perg {
     MmapFile::MmapFile(const std::string& filename) {
         fd_ = open(filename.c_str(), O_RDONLY);
         if (fd_ == -1) { 
-            throw std::runtime_error("Could not open file");
+            throw Perg::FileError("Could not open file");
         }
 
         struct stat sb;
         if (fstat(fd_, &sb) == -1) { 
-            throw std::runtime_error("Could not get file size");
+            throw Perg::FileError("Could not get file size");
         }
 
         size_ = sb.st_size;
 
         data_ = mmap(NULL, size_, PROT_READ, MAP_PRIVATE, fd_, 0);
         if (data_ == MAP_FAILED) {
-            throw std::runtime_error("Mmap failed");
+            throw Perg::FileError("Mmap failed");
         }
     }
 

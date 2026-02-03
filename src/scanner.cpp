@@ -1,5 +1,6 @@
-#include "perg/scanner.hpp"
 #include "perg/colors.hpp"
+#include "perg/exceptions.hpp"
+#include "perg/scanner.hpp"
 #include <iostream>
 #include <iomanip>
 #include <cmath>
@@ -8,45 +9,53 @@
 namespace Perg {
 
 int Scanner::scan(std::string_view content, const std::string& pattern) {
-    std::regex re(pattern, std::regex::optimize);
-    int total_matches = 0;
+    std::regex re;
+    try {
+        re = std::regex(pattern, std::regex::optimize);
+    } catch (const Perg::RegexError& e) {
+        throw RegexError(e.what());
+    }
 
+    int total_matches = 0;
+    
     int padding = (content.size() > 0) ? static_cast<int>(std::log10(content.size())) + 1 : 4;
     if (padding < 4) padding = 4;
 
     int line_number = 1;
-    size_t current_search_start = 0;
+    size_t last_line_break_pos = 0;
+    size_t last_newline_search_pos = 0;
     
     auto s_start = content.data();
     auto s_end = content.data() + content.size();
     std::cregex_iterator iter(s_start, s_end, re), end;
 
     while (iter != end) {
-        size_t pos = iter->position();
+        size_t match_pos = iter->position();
 
-        for (size_t i = current_search_start; i < pos; ++i) {
-            if (content[i] == '\n') line_number++;
+        for (size_t i = last_newline_search_pos; i < match_pos; ++i) {
+            if (content[i] == '\n') {
+                line_number++;
+                last_line_break_pos = i + 1;
+            }
         }
+        last_newline_search_pos = match_pos;
 
-        size_t line_start = content.rfind('\n', pos);
-        line_start = (line_start == std::string_view::npos) ? 0 : line_start + 1;
-        size_t line_end = content.find('\n', pos);
+        size_t line_end = content.find('\n', match_pos);
         if (line_end == std::string_view::npos) line_end = content.size();
 
-        std::string_view line_content = content.substr(line_start, line_end - line_start);
-
-        // Count occurrences on this line
-        std::cregex_iterator line_iter(line_content.data(), line_content.data() + line_content.size(), re);
-        for (; line_iter != end; ++line_iter) {
-            total_matches++;
-        }
+        std::string_view line_content = content.substr(last_line_break_pos, line_end - last_line_break_pos);
 
         if (!options_.count_only) {
             print_line(line_number, line_content, re, padding);
         }
 
-        current_search_start = line_end;
-        while (iter != end && (size_t)iter->position() < line_end) ++iter;
+        while (iter != end && (size_t)iter->position() < line_end) {
+            total_matches++;
+            last_newline_search_pos = iter->position() + iter->length();
+            ++iter;
+        }
+
+        last_newline_search_pos = line_end;
     }
 
     if (options_.count_only) {

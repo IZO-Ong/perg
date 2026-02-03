@@ -2,6 +2,7 @@
 #include <string>
 #include <unistd.h>
 #include <getopt.h>
+#include "perg/exceptions.hpp"
 #include "perg/mmap_file.hpp"
 #include "perg/scanner.hpp"
 
@@ -53,11 +54,15 @@ int main(int argc, char* argv[]) {
         Perg::MmapFile file(filename);
         Perg::Scanner scanner(options);
         scanner.scan(file.view(), pattern);
-    } catch (const std::regex_error& e) {
-        std::cerr << "Regex Error: " << e.what() << std::endl;
+    } catch (const Perg::RegexError& e) {
+        std::cerr << "Invalid Regex: " << e.what() << std::endl;
         return 1;
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+    } catch (const Perg::FileError& e) {
+        std::cerr << "FileSystem Error: " << e.what() << "\n";
+        return 1;
+    } 
+    catch (const std::exception& e) {
+        std::cerr << "Unexpected Error: " << e.what() << "\n";
         return 1;
     }
 
