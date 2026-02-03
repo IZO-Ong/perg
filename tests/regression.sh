@@ -99,6 +99,27 @@ else
     exit 1
 fi
 
+# Test 8: Complex Regex (Alternative/Grouping)
+echo -n "Test $((test_no++)): Complex Regex (hello|final)... "
+./build/perg "hello|final" "$INPUT_FILE" > test_output.txt
+if [ $(grep -cE "hello world|final line" test_output.txt) -eq 2 ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    exit 1
+fi
+
+# Test 9: Multi-match Duplicate Check
+echo -n "Test $((test_no++)): Literal Duplicate Line Check... "
+./build/perg "test" "$INPUT_FILE" > test_output.txt
+line_count=$(grep -c "test" test_output.txt)
+if [ "$line_count" -eq 2 ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Expected 2 unique lines, got $line_count)${NC}"
+    exit 1
+fi
+
 # Cleanup
 rm "$INPUT_FILE" test_output.txt
 echo -e "\n${CYAN}---------------------------------------${NC}"

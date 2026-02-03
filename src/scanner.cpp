@@ -3,20 +3,18 @@
 #include "perg/scanner.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
 #include <regex>
 
 namespace Perg {
 
-    int Scanner::scan(std::string_view content, const std::string& pattern) {
-        std::regex re;
-        try {
-            re = std::regex(pattern, std::regex::optimize);
-        } catch (const std::regex_error& e) {
-            throw RegexError(e.what());
-        }
+    bool is_literal(const std::string& p) {
+        return p.find_first_of(".+*?^$()[]{}|\\") == std::string::npos;
+    }
 
+    int Scanner::scan(std::string_view content, const std::string& pattern) {
         int total_matches = 0;
         int line_number = 1;
         size_t last_line_start_pos = 0;
@@ -25,37 +23,75 @@ namespace Perg {
         int padding = (content.size() > 0) ? static_cast<int>(std::log10(content.size())) + 1 : 4;
         if (padding < 4) padding = 4;
 
-        auto s_start = content.data();
-        auto s_end = content.data() + content.size();
-        std::cregex_iterator iter(s_start, s_end, re), end;
+        std::regex re;
+        try {
+            re = std::regex(pattern, std::regex::optimize);
+        } catch (const std::regex_error& e) {
+            throw RegexError(e.what());
+        }
 
-        while (iter != end) {
-            size_t match_pos = static_cast<size_t>(iter->position());
-
-            for (size_t i = last_newline_count_pos; i < match_pos; ++i) {
-                if (content[i] == '\n') {
-                    line_number++;
-                    last_line_start_pos = i + 1;
-                }
+        auto update_line_info = [&](size_t up_to_pos) {
+            const char* start_ptr = content.data() + last_newline_count_pos;
+            const char* end_ptr = content.data() + up_to_pos;
+            while (start_ptr < end_ptr) {
+                const char* next_nl = static_cast<const char*>(std::memchr(start_ptr, '\n', end_ptr - start_ptr));
+                if (!next_nl) break;
+                line_number++;
+                last_line_start_pos = (next_nl - content.data()) + 1;
+                start_ptr = next_nl + 1;
             }
-            last_newline_count_pos = match_pos;
+            last_newline_count_pos = up_to_pos;
+        };
 
-            size_t line_end = content.find('\n', match_pos);
-            if (line_end == std::string_view::npos) line_end = content.size();
+        if (is_literal(pattern)) {
+            size_t pos = 0;
+            while ((pos = content.find(pattern, pos)) != std::string_view::npos) {
+                update_line_info(pos);
 
-            if (!options_.count_only) {
+                size_t line_end = content.find('\n', pos);
+                if (line_end == std::string_view::npos) line_end = content.size();
+
                 std::string_view line_content = content.substr(last_line_start_pos, line_end - last_line_start_pos);
-                print_line(line_number, line_content, re, padding);
-            }
 
-            // skip other matches on the same line
-            while (iter != end && static_cast<size_t>(iter->position()) < line_end) {
-                total_matches++;
-                last_newline_count_pos = static_cast<size_t>(iter->position() + iter->length());
-                ++iter;
-            }
+                if (!options_.count_only) {
+                    print_line(line_number, line_content, re, padding);
+                }
 
-            last_newline_count_pos = line_end;
+                // count all matches on THIS line only
+                size_t internal_pos = 0;
+                while ((internal_pos = line_content.find(pattern, internal_pos)) != std::string_view::npos) {
+                    total_matches++;
+                    internal_pos += pattern.length();
+                }
+
+                // jump the search pointer to the end of the line
+                pos = line_end;
+                last_newline_count_pos = line_end; 
+            }
+        } else {
+            // REGEX SLOW-PATH
+            auto s_start = content.data();
+            auto s_end = content.data() + content.size();
+            std::cregex_iterator iter(s_start, s_end, re), end;
+
+            while (iter != end) {
+                size_t match_pos = static_cast<size_t>(iter->position());
+                update_line_info(match_pos);
+
+                size_t line_end = content.find('\n', match_pos);
+                if (line_end == std::string_view::npos) line_end = content.size();
+
+                if (!options_.count_only) {
+                    std::string_view line_content = content.substr(last_line_start_pos, line_end - last_line_start_pos);
+                    print_line(line_number, line_content, re, padding);
+                }
+
+                while (iter != end && static_cast<size_t>(iter->position()) < line_end) {
+                    total_matches++;
+                    ++iter;
+                }
+                last_newline_count_pos = line_end;
+            }
         }
 
         if (options_.count_only) std::cout << total_matches << "\n";
@@ -79,5 +115,4 @@ namespace Perg {
         }
         std::cout << line.substr(last_pos) << "\n";
     }
-
 }
