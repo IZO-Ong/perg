@@ -120,7 +120,54 @@ else
     exit 1
 fi
 
+# Folder tests
+
+# Create a temporary test directory structure
+TEST_DIR="temp_test_dir"
+mkdir -p "$TEST_DIR/sub1"
+mkdir -p "$TEST_DIR/sub2"
+
+echo "target in root" > "$TEST_DIR/file1.txt"
+echo "target in sub1" > "$TEST_DIR/sub1/file2.txt"
+echo "no match here" > "$TEST_DIR/sub2/file3.txt"
+
+# Test 10: Recursive Directory Search
+echo -n "Test $((test_no++)): Recursive Directory Search... "
+./build/perg "target" "$TEST_DIR" > test_output.txt
+
+# check if both matches from different files are present
+match_count=$(grep -c "target" test_output.txt)
+if [ "$match_count" -eq 2 ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Expected 2 matches across directory, got $match_count)${NC}"
+    exit 1
+fi
+
+# Test 11: Filename Prefixing in Directory Mode
+echo -n "Test $((test_no++)): Filename Prefixing Check... "
+# We expect the output to look like: temp_test_dir/file1.txt:1 | target in root
+if grep -q "$TEST_DIR/file1.txt:1" test_output.txt && grep -q "$TEST_DIR/sub1/file2.txt:1" test_output.txt; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Filename prefix missing or incorrect format)${NC}"
+    exit 1
+fi
+
+# Test 12: Binary File Skipping
+echo -n "Test $((test_no++)): Binary File Skipping Check... "
+# Create a dummy binary file (contains null byte)
+printf "match\0binary" > "$TEST_DIR/binary_file.dat"
+./build/perg "match" "$TEST_DIR" > test_output.txt
+
+if grep -q "binary_file.dat" test_output.txt; then
+    echo -e "${RED}FAIL (Should have skipped binary file)${NC}"
+    exit 1
+else
+    echo -e "${GREEN}PASS${NC}"
+fi
+
 # Cleanup
-rm "$INPUT_FILE" test_output.txt
+rm -rf "$TEST_DIR" "$INPUT_FILE" test_output.txt
 echo -e "\n${CYAN}---------------------------------------${NC}"
 echo -e "${GREEN}All $((test_no-1)) tests passed successfully!${NC}"

@@ -2,18 +2,39 @@
 #include "perg/mmap_file.hpp"
 #include "perg/scanner.hpp"
 
-#include <iostream>
+#include <filesystem>
 #include <getopt.h>
+#include <iostream>
 #include <string>
 #include <unistd.h>
+
+namespace fs = std::filesystem;
 
 void print_help() {
     std::cout << "perg - A high-performance, zero-copy regex pattern scanner\n\n"
               << "Usage:\n"
-              << "  perg [options] <pattern> <file>\n\n"
+              << "  perg [options] <pattern> <file_or_dir>\n\n"
               << "Options:\n"
               << "  -c    Only print the total count of pattern occurrences\n"
               << "  -h    Show this help message\n" << std::endl;
+}
+
+void process_path(const fs::path& path, const std::string& pattern, Perg::Scanner& scanner) {
+    try {
+        if (fs::is_directory(path)) {
+            for (const auto& entry : fs::recursive_directory_iterator(path, fs::directory_options::skip_permission_denied)) {
+                if (fs::is_regular_file(entry.path())) {
+                    Perg::MmapFile file(entry.path().string());
+                    scanner.scan(file.view(), pattern, entry.path().string());
+                }
+            }
+        } else if (fs::is_regular_file(path)) {
+            Perg::MmapFile file(path.string());
+            scanner.scan(file.view(), pattern, path.string());
+        }
+    } catch (const Perg::PergException& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -30,40 +51,41 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     while ((opt = getopt_long(argc, argv, "ch", long_options, &option_index)) != -1) {
         switch (opt) {
-            case 'c':
-                options.count_only = true;
-                break;
-            case 'h':
-                print_help();
-                return 0;
-            default:
-                print_help();
-                return 1;
+            case 'c': options.count_only = true; break;
+            case 'h': print_help(); return 0;
+            default:  print_help(); return 1;
         }
     }
 
     if (argc - optind < 2) {
-        std::cerr << "Error: Missing pattern or filename.\n";
+        std::cerr << "Error: Missing pattern or path.\n";
         print_help();
         return 1;
     }
 
     std::string pattern = argv[optind];
-    std::string filename = argv[optind + 1];
+    fs::path target_path = argv[optind + 1];
+
+    if (!fs::exists(target_path)) {
+        std::cerr << "FileSystem Error: Path does not exist: " << target_path << "\n";
+        return 1; 
+    }
+
+    if (fs::is_directory(target_path)) {
+        options.print_filename = true;
+    }
 
     try {
-        Perg::MmapFile file(filename);
         Perg::Scanner scanner(options);
-        scanner.scan(file.view(), pattern);
+        process_path(target_path, pattern, scanner);
     } catch (const Perg::RegexError& e) {
-        std::cerr << "Invalid Regex: " << e.what() << std::endl;
+        std::cerr << e.what() << "\n";
         return 1;
     } catch (const Perg::FileError& e) {
-        std::cerr << "FileSystem Error: " << e.what() << "\n";
+        std::cerr << e.what() << "\n";
         return 1;
-    } 
-    catch (const std::exception& e) {
-        std::cerr << "Unexpected Error: " << e.what() << "\n";
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal Error: " << e.what() << "\n";
         return 1;
     }
 

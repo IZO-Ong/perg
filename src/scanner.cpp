@@ -14,7 +14,17 @@ namespace Perg {
         return p.find_first_of(".+*?^$()[]{}|\\") == std::string::npos;
     }
 
-    int Scanner::scan(std::string_view content, const std::string& pattern) {
+    bool is_binary(std::string_view content) {
+        size_t check_limit = std::min(content.size(), (size_t)1024);
+        for (size_t i = 0; i < check_limit; ++i) {
+            if (content[i] == '\0') return true;
+        }
+        return false;
+    }
+
+    int Scanner::scan(std::string_view content, const std::string& pattern, const std::string& filename) {
+        if (is_binary(content)) return 0;
+
         int total_matches = 0;
         int line_number = 1;
         size_t last_line_start_pos = 0;
@@ -47,29 +57,24 @@ namespace Perg {
             size_t pos = 0;
             while ((pos = content.find(pattern, pos)) != std::string_view::npos) {
                 update_line_info(pos);
-
                 size_t line_end = content.find('\n', pos);
                 if (line_end == std::string_view::npos) line_end = content.size();
 
                 std::string_view line_content = content.substr(last_line_start_pos, line_end - last_line_start_pos);
 
                 if (!options_.count_only) {
-                    print_line(line_number, line_content, re, padding);
+                    print_line(line_number, line_content, re, padding, filename);
                 }
 
-                // count all matches on THIS line only
                 size_t internal_pos = 0;
                 while ((internal_pos = line_content.find(pattern, internal_pos)) != std::string_view::npos) {
                     total_matches++;
                     internal_pos += pattern.length();
                 }
-
-                // jump the search pointer to the end of the line
                 pos = line_end;
                 last_newline_count_pos = line_end; 
             }
         } else {
-            // REGEX SLOW-PATH
             auto s_start = content.data();
             auto s_end = content.data() + content.size();
             std::cregex_iterator iter(s_start, s_end, re), end;
@@ -77,13 +82,12 @@ namespace Perg {
             while (iter != end) {
                 size_t match_pos = static_cast<size_t>(iter->position());
                 update_line_info(match_pos);
-
                 size_t line_end = content.find('\n', match_pos);
                 if (line_end == std::string_view::npos) line_end = content.size();
 
                 if (!options_.count_only) {
                     std::string_view line_content = content.substr(last_line_start_pos, line_end - last_line_start_pos);
-                    print_line(line_number, line_content, re, padding);
+                    print_line(line_number, line_content, re, padding, filename);
                 }
 
                 while (iter != end && static_cast<size_t>(iter->position()) < line_end) {
@@ -94,11 +98,18 @@ namespace Perg {
             }
         }
 
-        if (options_.count_only) std::cout << total_matches << "\n";
+        if (options_.count_only && !options_.print_filename) std::cout << total_matches << "\n";
         return total_matches;
     }
 
-    void Scanner::print_line(int line_no, std::string_view line, const std::regex& re, int padding) {
+    void Scanner::print_line(int line_no, std::string_view line, const std::regex& re, int padding, const std::string& filename) {
+        // conditional filename
+        if (options_.print_filename) {
+            if (options_.use_color) std::cout << Colors::CYAN;
+            std::cout << filename << ":";
+            if (options_.use_color) std::cout << Colors::RESET;
+        }
+
         if (options_.use_color) std::cout << Colors::YELLOW;
         std::cout << std::setw(padding) << std::left << line_no;
         if (options_.use_color) std::cout << Colors::RESET;
@@ -115,4 +126,5 @@ namespace Perg {
         }
         std::cout << line.substr(last_pos) << "\n";
     }
+
 }
