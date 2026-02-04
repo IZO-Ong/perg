@@ -10,6 +10,8 @@ namespace Perg {
         bool count_only = false;
         bool print_filename = false;
         bool ignore_case = false;
+        bool recursive = false;
+        std::string file_filter = "";
         int context_before = 0;
         int context_after = 0;
     };

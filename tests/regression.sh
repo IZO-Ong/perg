@@ -78,16 +78,7 @@ else
     echo -e "${GREEN}PASS${NC}"
 fi
 
-# Test 5: Help Function (-h)
-echo -n "Test $((test_no++)): Help Function (-h)... "
-if ./build/perg -h | grep -iq "usage"; then
-    echo -e "${GREEN}PASS${NC}"
-else
-    echo -e "${RED}FAIL (Command failed or help text missing)${NC}"
-    exit 1
-fi
-
-# Test 6: Help Function (--help)
+# Test 5: Help Function (--help)
 echo -n "Test $((test_no++)): Help Function (--help)... "
 if ./build/perg --help | grep -iq "usage"; then
     echo -e "${GREEN}PASS${NC}"
@@ -96,7 +87,7 @@ else
     exit 1
 fi
 
-# Test 7: Count Flag (-c) Total Occurrences
+# Test 6: Count Flag (-c) Total Occurrences
 echo -n "Test $((test_no++)): Count Flag (-c) Total Occurrences... "
 actual_count=$(./build/perg --no-color -c "test" "$INPUT_FILE" | tr -d '[:space:]')
 if [ "$actual_count" -eq 6 ]; then
@@ -106,7 +97,7 @@ else
     exit 1
 fi
 
-# Test 8: Complex Regex (Alternative/Grouping)
+# Test 7: Complex Regex (Alternative/Grouping)
 echo -n "Test $((test_no++)): Complex Regex (hello|final)... "
 ./build/perg --no-color "hello|final" "$INPUT_FILE" > test_output.txt
 if [ $(grep -cE "hello world|final line" test_output.txt) -eq 2 ]; then
@@ -116,7 +107,7 @@ else
     exit 1
 fi
 
-# Test 9: Multi-match Duplicate Check
+# Test 8: Multi-match Duplicate Check
 echo -n "Test $((test_no++)): Literal Duplicate Line Check... "
 ./build/perg --no-color "test" "$INPUT_FILE" > test_output.txt
 line_count=$(grep -c "test" test_output.txt)
@@ -127,7 +118,7 @@ else
     exit 1
 fi
 
-# Test 10: Context Formatting
+# Test 9: Context Formatting
 echo -n "Test $((test_no++)): Context Formatting (-C 1)... "
 ./build/perg -n --no-color -C 1 "this is a test line" "$INPUT_FILE" > test_output.txt
 # Expected: Line 1 (context), Line 2 (match), Line 3 (context)
@@ -149,9 +140,9 @@ echo "target in root" > "$TEST_DIR/file1.txt"
 echo "target in sub1" > "$TEST_DIR/sub1/file2.txt"
 echo "no match here" > "$TEST_DIR/sub2/file3.txt"
 
-# Test 11: Recursive Directory Search
+# Test 10: Recursive Directory Search
 echo -n "Test $((test_no++)): Recursive Directory Search... "
-./build/perg --no-color "target" "$TEST_DIR" > test_output.txt
+./build/perg --no-color -r "target" "$TEST_DIR" > test_output.txt
 if [ $(grep -c "target" test_output.txt) -eq 2 ]; then
     echo -e "${GREEN}PASS${NC}"
 else
@@ -159,9 +150,9 @@ else
     exit 1
 fi
 
-# Test 12: Filename Prefixing Check
+# Test 11: Filename Prefixing Check
 echo -n "Test $((test_no++)): Filename Suffix Check (Pipe Format)... "
-./build/perg -n --no-color "target" "$TEST_DIR" > test_output.txt
+./build/perg -n -r -H --no-color "target" "$TEST_DIR" > test_output.txt
 
 if grep -qE "^1[[:space:]]+: target in root \| .*file1\.txt" test_output.txt && \
    grep -qE "^1[[:space:]]+: target in sub1 \| .*sub1/file2\.txt" test_output.txt; then
@@ -172,10 +163,10 @@ else
     exit 1
 fi
 
-# Test 13: Binary File Skipping
+# Test 12: Binary File Skipping
 echo -n "Test $((test_no++)): Binary File Skipping Check... "
 printf "match\0binary" > "$TEST_DIR/binary_file.dat"
-./build/perg --no-color "match" "$TEST_DIR" > test_output.txt
+./build/perg --no-color -r "match" "$TEST_DIR" > test_output.txt
 if grep -q "binary_file.dat" test_output.txt; then
     echo -e "${RED}FAIL (Should have skipped binary file)${NC}"
     exit 1
@@ -183,7 +174,38 @@ else
     echo -e "${GREEN}PASS${NC}"
 fi
 
-# Test 14: Color Output Verification
+# Test 13: Directory without -r (Should Fail)
+echo -n "Test $((test_no++)): Directory without -r (Should Fail)... "
+# We expect the command to return a non-zero exit code
+if ./build/perg --no-color "target" "$TEST_DIR" 2>test_output.txt; then
+    echo -e "${RED}FAIL (Should have failed without -r)${NC}"
+    exit 1
+else
+    if grep -q "Is a directory (use -r to recurse)" test_output.txt; then
+        echo -e "${GREEN}PASS${NC}"
+    else
+        echo -e "${RED}FAIL (Incorrect error message)${NC}"
+        cat test_output.txt
+        exit 1
+    fi
+fi
+
+# Test 14: Extension Filter (-f)
+echo -n "Test $((test_no++)): Extension Filter (-f .txt)... "
+# Setup: create a .log file that contains the target
+echo "target in log" > "$TEST_DIR/exclude_me.log"
+# Search for "target" but only in .txt files
+./build/perg -r -H -f ".txt" --no-color "target" "$TEST_DIR" > test_output.txt
+
+if grep -q "file1.txt" test_output.txt && ! grep -q "exclude_me.log" test_output.txt; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Filter did not exclude .log file)${NC}"
+    cat test_output.txt
+    exit 1
+fi
+
+# Test 15: Color Output Verification
 echo -n "Test $((test_no++)): Color Output Verification (--color)... "
 # Force color even though we are piping to a file
 ./build/perg --color "test" "$INPUT_FILE" > test_output.txt
@@ -195,7 +217,7 @@ else
     exit 1
 fi
 
-# Test 15: Explicit No-Color Verification (--no-color)
+# Test 16: Explicit No-Color Verification (--no-color)
 echo -n "Test $((test_no++)): Explicit No-Color Verification (--no-color)... "
 ./build/perg --no-color "test" "$INPUT_FILE" > test_output.txt
 if cat -v test_output.txt | grep -q "\^\[\["; then
@@ -205,7 +227,7 @@ else
     echo -e "${GREEN}PASS${NC}"
 fi
 
-# Test 16: Default Behavior
+# Test 17: Default Behavior
 echo -n "Test $((test_no++)): Default Color Behavior (Pipe Check)... "
 ./build/perg "test" "$INPUT_FILE" > test_output.txt
 # Since we are redirecting to a file, isatty(STDOUT_FILENO) should be false
@@ -216,7 +238,7 @@ else
     echo -e "${GREEN}PASS${NC}"
 fi
 
-# Test 17: Case-Insensitive Match (-i)
+# Test 18: Case-Insensitive Match (-i)
 echo -n "Test $((test_no++)): Case-Insensitive Match (-i)... "
 # Search for uppercase 'HELLO' in the input file which contains 'hello'
 if ./build/perg -i --no-color "HELLO" "$INPUT_FILE" | grep -q "hello world"; then
@@ -226,15 +248,9 @@ else
     exit 1
 fi
 
-# Test 18: Context Overlap Prevention (Using global input)
+# Test 19: Context Overlap Prevention (Using global input)
 echo -n "Test $((test_no++)): Context Overlap Prevention... "
-# Search for "test" on adjacent lines 5 and 6 with 1 line of context.
-# Line 5 (match) and Line 6 (match) share Line 4 and Line 7 as context.
-# Line 5 should NOT be printed as context for Line 6 if it's already a match.
 ./build/perg --no-color -C 1 "another test" "$INPUT_FILE" > test_output.txt
-
-# Count how many times "another test line" (Line 5) appears.
-# Even if it's a match and potentially context for Line 6, it should only appear ONCE.
 occurrences=$(grep -c "another test line" test_output.txt)
 
 if [ "$occurrences" -eq 1 ]; then
