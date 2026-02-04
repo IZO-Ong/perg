@@ -24,6 +24,13 @@ namespace Perg {
 
     private:
         ScanOptions options_;
-        void print_line(int line_no, std::string_view line, const std::regex& re, int padding, const std::string& filename, bool is_match);
+
+        void render_output_group(std::string_view content, int match_ln, 
+                                 size_t line_start, size_t line_end, 
+                                 size_t& last_printed_pos, const std::regex& re, 
+                                 const std::string& filename);
+
+        void print_line(int line_no, std::string_view line, const std::regex& re, 
+                        int padding, const std::string& filename, bool is_match);
     };
 }

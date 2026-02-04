@@ -65,6 +65,17 @@ void process_path(const fs::path& path, const std::string& pattern,
     }
 }
 
+void set_smart_defaults(Perg::ScanOptions& options, bool is_tty, const fs::path& target) {
+    options.print_line_numbers = is_tty;
+    options.use_color = is_tty;
+    
+    if (options.print_filename) {
+         if (is_tty && (options.recursive || fs::is_directory(target))) {
+            options.print_filename = true;
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     Perg::ScanOptions options;
     bool stdout_is_tty = isatty(STDOUT_FILENO);
