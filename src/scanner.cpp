@@ -143,8 +143,15 @@ namespace Perg {
     }
 
     void Scanner::print_line(int line_no, std::string_view line, const std::regex& re, 
-            int padding, const std::string& filename, bool is_match) {
+                        int padding, const std::string& filename, bool is_match) {
         auto& out = std::cout;
+
+        size_t first_content = line.find_first_not_of(" \t\r\n");
+        if (first_content != std::string_view::npos) {
+            line.remove_prefix(first_content);
+        } else if (line.find_first_of(" \t\r\n") != std::string_view::npos) {
+            line = "";
+        }
 
         if (options_.print_line_numbers) {
             if (options_.use_color) out << Colors::YELLOW;
