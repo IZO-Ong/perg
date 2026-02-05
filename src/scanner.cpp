@@ -149,8 +149,9 @@ namespace Perg {
         if (file_res.matches.size() > 1) {
             std::sort(file_res.matches.begin(), file_res.matches.end(), [](const auto& a, const auto& b) {
                 if (a.line_no != b.line_no) return a.line_no < b.line_no;
-                return a.is_context > b.is_context; 
+                return a.is_context < b.is_context; 
             });
+
             file_res.matches.erase(std::unique(file_res.matches.begin(), file_res.matches.end(), [](const auto& a, const auto& b) {
                 return a.line_no == b.line_no;
             }), file_res.matches.end());

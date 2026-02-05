@@ -74,16 +74,25 @@ namespace Perg {
                 std::string m_prefix = prefix + (is_last ? "    " : "|   ");
                 
                 for (size_t i = 0; i < node.matches.size(); ++i) {
+                    const auto& match = node.matches[i];
                     bool last_m = (i == node.matches.size() - 1);
+                    
                     out << m_prefix << (last_m ? "+-- " : "|-- ");
                     if (options_.use_color) out << Colors::YELLOW;
-                    out << std::setw(padding) << std::left << node.matches[i].line_no;
-                    out << (options_.use_color ? Colors::RESET : "") << " : ";
+                    out << std::setw(padding) << std::left << match.line_no;
+                    if (options_.use_color) out << Colors::RESET;
 
-                    std::string_view content = node.matches[i].content;
+                    out << (match.is_context ? " - " : " : "); 
+
+                    std::string_view content = match.content;
                     size_t first = content.find_first_not_of(" \t\r\n");
                     if (first != std::string_view::npos) content.remove_prefix(first);
-                    highlight_content(content, re); 
+
+                    if (!match.is_context) {
+                        highlight_content(content, re); 
+                    } else {
+                        out << content;
+                    }
                     out << "\n";
                 }
             }
@@ -94,6 +103,7 @@ namespace Perg {
             out << " (" << node.total_matches << ")\n";
         }
 
+        // Standard child node sorting and recursion
         std::vector<std::pair<std::string, TreeNode*>> sorted;
         for (auto& [name, child] : node.children) sorted.push_back({name, child.get()});
         std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
