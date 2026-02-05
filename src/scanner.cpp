@@ -51,54 +51,82 @@ namespace Perg {
         return content.size();
     }
 
+    bool is_literal(const std::string& p) {
+        return p.find_first_of(".+*?^$()[]{}|\\") == std::string::npos;
+    }
+
+    std::vector<size_t> Scanner::build_line_map(std::string_view content) const {
+        std::vector<size_t> line_starts;
+        line_starts.reserve(content.size() / 40); // Heuristic: avg line length is around 40 chars
+        
+        line_starts.push_back(0);
+        for (size_t i = 0; i < content.size(); ++i) {
+            if (content[i] == '\n') {
+                line_starts.push_back(i + 1);
+            }
+        }
+        return line_starts;
+    }
+
     FileResult Scanner::scan(std::string_view content, const std::string& pattern, const std::string& filename) {
         FileResult file_res;
         file_res.filename = filename;
         if (is_binary(content)) return file_res;
 
-        std::regex_constants::syntax_option_type flags = std::regex::optimize;
-        if (options_.ignore_case) flags |= std::regex::icase;
-        
-        std::regex re;
-        try {
-            re = std::regex(pattern, flags);
-        } catch (const std::regex_error& e) {
-            throw RegexError(e.what());
-        }
-
-        int current_line_no = 1;
-        size_t last_line_start = 0;
+        std::vector<size_t> line_map = build_line_map(content);
         size_t last_printed_pos = 0;
 
-        auto it = std::cregex_iterator(content.data(), content.data() + content.size(), re);
-        auto end = std::cregex_iterator();
+        if (is_literal(pattern) && !options_.ignore_case) {
+            size_t pos = content.find(pattern, 0);
+            while (pos != std::string_view::npos) {
+                auto line_it = std::upper_bound(line_map.begin(), line_map.end(), pos);
+                int line_no = static_cast<int>(std::distance(line_map.begin(), line_it));
+                
+                size_t line_start = line_map[line_no - 1];
+                size_t line_end = (line_no < line_map.size()) ? line_map[line_no] - 1 : content.size();
 
-        while (it != end) {
-            size_t match_pos = it->position();
-            size_t line_start = content.find_last_of('\n', match_pos);
-            line_start = (line_start == std::string_view::npos) ? 0 : line_start + 1;
-            
-            size_t line_end = content.find('\n', match_pos);
-            if (line_end == std::string_view::npos) line_end = content.size();
+                file_res.matches.push_back({line_no, content.substr(line_start, line_end - line_start)});
+                
+                size_t line_search_pos = pos;
+                while (line_search_pos != std::string_view::npos && line_search_pos < line_end) {
+                    file_res.total_matches++;
+                    line_search_pos = content.find(pattern, line_search_pos + pattern.length());
+                }
 
-            // Increment line counter based on newlines between last match and current
-            current_line_no += std::count(content.data() + last_line_start, content.data() + line_start, '\n');
-            last_line_start = line_start;
+                if (!options_.visualize_graph && !options_.count_only) {
+                    std::regex re(pattern, std::regex::optimize);
+                    render_output_group(content, line_no, line_start, line_end, last_printed_pos, re, filename);
+                }
 
-            std::string_view line_view = content.substr(line_start, line_end - line_start);
-            
-            // Add unique line to result list
-            file_res.matches.push_back({current_line_no, std::string(line_view)});
-
-            // Count every occurrence on this line, but skip the iterator to the next line
-            while (it != end && (size_t)it->position() < line_end) {
-                file_res.total_matches++;
-                ++it;
+                pos = content.find(pattern, line_end);
             }
+        } 
+        else {
+            std::regex_constants::syntax_option_type flags = std::regex::optimize;
+            if (options_.ignore_case) flags |= std::regex::icase;
+            std::regex re(pattern, flags);
 
-            // Stream output immediately if we are not buffering for the graph
-            if (!options_.visualize_graph && !options_.count_only) {
-                render_output_group(content, current_line_no, line_start, line_end, last_printed_pos, re, filename);
+            auto it = std::cregex_iterator(content.data(), content.data() + content.size(), re);
+            auto end = std::cregex_iterator();
+
+            while (it != end) {
+                size_t match_pos = it->position();
+                auto line_it = std::upper_bound(line_map.begin(), line_map.end(), match_pos);
+                int line_no = static_cast<int>(std::distance(line_map.begin(), line_it));
+                
+                size_t line_start = line_map[line_no - 1];
+                size_t line_end = (line_no < line_map.size()) ? line_map[line_no] - 1 : content.size();
+
+                file_res.matches.push_back({line_no, content.substr(line_start, line_end - line_start)});
+
+                while (it != end && static_cast<size_t>(it->position()) < line_end) {
+                    file_res.total_matches++;
+                    ++it;
+                }
+
+                if (!options_.visualize_graph && !options_.count_only) {
+                    render_output_group(content, line_no, line_start, line_end, last_printed_pos, re, filename);
+                }
             }
         }
 

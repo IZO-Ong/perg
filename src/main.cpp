@@ -106,15 +106,20 @@ int main(int argc, char* argv[]) {
     try {
         Perg::Scanner scanner(options);
         Perg::SearchEngine engine(options);
+        
         std::vector<Perg::FileResult> results;
+        std::vector<std::unique_ptr<Perg::MmapFile>> mmap_cache;
 
         engine.walk(target_path, [&](const fs::path& p) {
             try {
-                Perg::MmapFile file(p.string());
-                auto res = scanner.scan(file.view(), pattern, p.string());
+                auto file = std::make_unique<Perg::MmapFile>(p.string());
+                auto res = scanner.scan(file->view(), pattern, p.string());
                 
-                if (options.visualize_graph && !res.matches.empty()) {
-                    results.push_back(std::move(res));
+                if (!res.matches.empty()) {
+                    if (options.visualize_graph) {
+                        results.push_back(std::move(res));
+                        mmap_cache.push_back(std::move(file));
+                    }
                 }
             } catch (...) {
                 // Skip problematic files
@@ -125,6 +130,8 @@ int main(int argc, char* argv[]) {
             Perg::TreeRenderer renderer(options);
             renderer.render(results, pattern);
         }
+        
+        // mmap_cache is destroyed
 
     } catch (const Perg::RegexError& e) {
         std::cerr << e.what() << "\n"; 

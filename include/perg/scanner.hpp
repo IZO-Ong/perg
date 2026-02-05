@@ -20,7 +20,7 @@ namespace Perg {
 
     struct MatchRecord {
         int line_no;
-        std::string content;
+        std::string_view content;
     };
 
     struct FileResult {
@@ -47,6 +47,8 @@ namespace Perg {
                         int padding, const std::string& filename, bool is_match);
         
         void highlight_content(std::string_view line, const std::regex& re);
+
+        std::vector<size_t> build_line_map(std::string_view content) const;
     };
 
     bool is_binary(std::string_view content);
