@@ -16,6 +16,18 @@ namespace Perg {
         root.name = ""; 
         for (const auto& res : results) build_tree(root, res);
 
+        std::function<void(TreeNode&)> sort_node = [&](TreeNode& node) {
+            if (node.is_file) {
+                std::sort(node.matches.begin(), node.matches.end(), [](const auto& a, const auto& b) {
+                    return a.line_no < b.line_no;
+                });
+            }
+            for (auto& [name, child] : node.children) {
+                sort_node(*child);
+            }
+        };
+        sort_node(root);
+
         if (root.children.size() == 1) {
             draw_node(*root.children.begin()->second, "", true, pattern);
         } else {
@@ -38,19 +50,21 @@ namespace Perg {
             current = current->children[part_str].get();
             current->total_matches += result.total_matches;
         }
+        
         current->is_file = true;
-        current->matches = result.matches;
+        current->matches.insert(current->matches.end(), result.matches.begin(), result.matches.end());
     }
 
     void TreeRenderer::draw_node(const TreeNode& node, const std::string& prefix, bool is_last, const std::string& pattern) {
         auto& out = std::cout;
+
         std::regex_constants::syntax_option_type flags = std::regex::optimize;
         if (options_.ignore_case) flags |= std::regex::icase;
         std::regex re(pattern, flags);
 
         out << prefix << (is_last ? "+-- " : "|-- ");
         if (node.is_file) {
-            if (options_.use_color) out << Colors::CYAN;
+            if (options_.use_color) out << Colors::MAGENTA;
             out << node.name << (options_.use_color ? Colors::RESET : "");
             out << " (" << node.total_matches << ")\n";
 
@@ -74,7 +88,10 @@ namespace Perg {
                 }
             }
         } else {
-            out << node.name << "/ (" << node.total_matches << ")\n";
+            if (options_.use_color) out << Colors::BOLD;
+            out << node.name << "/";
+            if (options_.use_color) out << Colors::RESET;
+            out << " (" << node.total_matches << ")\n";
         }
 
         std::vector<std::pair<std::string, TreeNode*>> sorted;

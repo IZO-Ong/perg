@@ -1,10 +1,11 @@
 #pragma once
-#include <string_view>
-#include <regex>
 #include <string>
 #include <vector>
+#include <string_view>
+#include <regex>
 
 namespace Perg {
+
     struct ScanOptions {
         bool visualize_graph = false;
         bool print_line_numbers = true;
@@ -21,34 +22,34 @@ namespace Perg {
     struct MatchRecord {
         int line_no;
         std::string_view content;
+        bool is_context;
+        
+        bool operator==(const MatchRecord& other) const {
+            return line_no == other.line_no;
+        }
     };
 
     struct FileResult {
         std::string filename;
-        int total_matches = 0;
         std::vector<MatchRecord> matches;
+        size_t total_matches = 0;
     };
 
     class Scanner {
     public:
-        explicit Scanner(ScanOptions options) : options_(options) {}
-        
+        explicit Scanner(const ScanOptions& options) : options_(options) {}
+
         FileResult scan(std::string_view content, const std::string& pattern, const std::string& filename);
+
+        FileResult scan_chunk(std::string_view full_content, 
+                              const std::string& pattern, 
+                              const std::string& filename, 
+                              int start_line,
+                              size_t range_start = 0,
+                              size_t range_end = std::string_view::npos);
 
     private:
         ScanOptions options_;
-        
-        void render_output_group(std::string_view content, int match_ln, 
-                                 size_t line_start, size_t line_end, 
-                                 size_t& last_printed_pos, const std::regex& re, 
-                                 const std::string& filename);
-        
-        void print_line(int line_no, std::string_view line, const std::regex& re, 
-                        int padding, const std::string& filename, bool is_match);
-        
-        void highlight_content(std::string_view line, const std::regex& re);
-
-        std::vector<size_t> build_line_map(std::string_view content) const;
     };
 
     bool is_binary(std::string_view content);
