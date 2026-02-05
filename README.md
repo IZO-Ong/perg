@@ -49,6 +49,8 @@ perg -g -C 2 "Scanner" include/
 # Case-insensitive search with line numbers
 perg -in "virtual"
 ```
+
+![Screenshot](docs/images/perg-screenshot.png)
 ---
 
 ## Performance
