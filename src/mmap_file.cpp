@@ -3,10 +3,10 @@
 
 #include <fcntl.h>
 #include <stdexcept>
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 namespace Perg {
     MmapFile::MmapFile(const std::string& filename) {

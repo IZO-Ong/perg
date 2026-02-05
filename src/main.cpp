@@ -1,11 +1,12 @@
 #include "perg/exceptions.hpp"
 #include "perg/mmap_file.hpp"
 #include "perg/scanner.hpp"
+#include "perg/search_engine.hpp"
+#include "perg/tree_renderer.hpp"
 
 #include <filesystem>
 #include <getopt.h>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -37,55 +38,6 @@ void print_help() {
               << std::endl;
 }
 
-void process_path(const fs::path& path, const std::string& pattern, 
-                  const Perg::ScanOptions& options, Perg::Scanner& scanner) {
-    if (fs::is_directory(path)) {
-        if (!options.recursive) {
-            throw Perg::FileError("perg: " + path.string() + ": Is a directory (use -r to recurse)");
-        }
-        for (const auto& entry : fs::recursive_directory_iterator(path, fs::directory_options::skip_permission_denied)) {
-            if (fs::is_regular_file(entry.path())) {
-                if (!options.file_filter.empty() && entry.path().extension() != options.file_filter) continue;
-                
-                std::error_code ec;
-                if (fs::file_size(entry.path(), ec) == 0 || ec) continue;
-
-                Perg::MmapFile file(entry.path().string());
-                scanner.scan(file.view(), pattern, entry.path().string());
-            }
-        }
-    } else if (fs::is_regular_file(path)) {
-        Perg::MmapFile file(path.string());
-        scanner.scan(file.view(), pattern, path.string());
-    }
-}
-
-void process_path_and_collect(const fs::path& path, const std::string& pattern, 
-                             const Perg::ScanOptions& options, Perg::Scanner& scanner, 
-                             std::vector<Perg::FileResult>& all_results) {
-    if (fs::is_directory(path)) {
-        if (!options.recursive) {
-            throw Perg::FileError("perg: " + path.string() + ": Is a directory (use -r to recurse)");
-        }
-        for (const auto& entry : fs::recursive_directory_iterator(path, fs::directory_options::skip_permission_denied)) {
-            if (fs::is_regular_file(entry.path())) {
-                if (!options.file_filter.empty() && entry.path().extension() != options.file_filter) continue;
-                
-                std::error_code ec;
-                if (fs::file_size(entry.path(), ec) == 0 || ec) continue;
-
-                Perg::MmapFile file(entry.path().string());
-                auto res = scanner.scan(file.view(), pattern, entry.path().string());
-                if (!res.matches.empty()) all_results.push_back(std::move(res));
-            }
-        }
-    } else if (fs::is_regular_file(path)) {
-        Perg::MmapFile file(path.string());
-        auto res = scanner.scan(file.view(), pattern, path.string());
-        if (!res.matches.empty()) all_results.push_back(std::move(res));
-    }
-}
-
 int main(int argc, char* argv[]) {
     Perg::ScanOptions options;
     bool stdout_is_tty = isatty(STDOUT_FILENO);
@@ -112,7 +64,6 @@ int main(int argc, char* argv[]) {
     };
 
     int opt;
-    // Alphabetical order for the short-string where possible: "A:B:C:ce:fFghinNr"
     while ((opt = getopt_long(argc, argv, "A:B:C:ce:fFghinNr", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'A': options.context_after = std::stoi(optarg); break;
@@ -154,22 +105,35 @@ int main(int argc, char* argv[]) {
 
     try {
         Perg::Scanner scanner(options);
+        Perg::SearchEngine engine(options);
+        std::vector<Perg::FileResult> results;
 
-        if (options.visualize_graph) {
-            std::vector<Perg::FileResult> all_results;
-            process_path_and_collect(target_path, pattern, options, scanner, all_results);
-            scanner.print_tree_graph(all_results, pattern);
-        } else {
-            process_path(target_path, pattern, options, scanner);
+        engine.walk(target_path, [&](const fs::path& p) {
+            try {
+                Perg::MmapFile file(p.string());
+                auto res = scanner.scan(file.view(), pattern, p.string());
+                
+                if (options.visualize_graph && !res.matches.empty()) {
+                    results.push_back(std::move(res));
+                }
+            } catch (...) {
+                // Skip problematic files
+            }
+        });
+
+        if (options.visualize_graph && !results.empty()) {
+            Perg::TreeRenderer renderer(options);
+            renderer.render(results, pattern);
         }
+
     } catch (const Perg::RegexError& e) {
-        std::cerr << "Regex Error: " << e.what() << "\n";
+        std::cerr << e.what() << "\n"; 
         return 1;
     } catch (const Perg::FileError& e) {
-        std::cerr << e.what() << "\n";
+        std::cerr << e.what() << "\n"; 
         return 1;
     } catch (const std::exception& e) {
-        std::cerr << "Fatal Error: " << e.what() << "\n";
+        std::cerr << e.what() << "\n"; 
         return 1;
     }
 

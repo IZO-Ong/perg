@@ -1,15 +1,28 @@
 cmake_minimum_required(VERSION 3.10)
 project(perg LANGUAGES CXX)
 
-# C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Header files
 include_directories(include)
 
-# Source files
-file(GLOB SOURCES "src/*.cpp")
+set(SOURCES
+    src/main.cpp
+    src/scanner.cpp
+    src/search_engine.cpp
+    src/tree_renderer.cpp
+    src/mmap_file.cpp
+)
 
-# executable
 add_executable(perg ${SOURCES})
+
+find_package(Threads REQUIRED)
+target_link_libraries(perg PRIVATE Threads::Threads)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(MSVC)
+        target_compile_options(perg PRIVATE /O2 /Oi)
+    else()
+        target_compile_options(perg PRIVATE -O3 -march=native -flto)
+    endif()
+endif()
