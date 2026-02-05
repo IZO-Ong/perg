@@ -35,6 +35,8 @@ cd perg
 ### 2. Build and Install
 ```bash
 chmod +x install.sh
+
+# Uninstall with the --uninstall flag
 ./install.sh
 ```
 
@@ -50,8 +52,25 @@ perg -g -C 2 "Scanner" include/
 perg -in "virtual"
 ```
 
+### Preview
 ![Screenshot](docs/images/perg-screenshot.png)
 ---
+
+## CLI Options
+
+| Option | Long Flag | Description |
+| :--- | :--- | :--- |
+| `-A <n>` | `--after-context` | Print `<n>` lines of trailing context. |
+| `-B <n>` | `--before-context` | Print `<n>` lines of leading context. |
+| `-C <n>` | `--context` | Print `<n>` lines of leading and trailing context. |
+| `-c` | `--count` | Only print the total match count per file. |
+| `-e <ext>` | `--filter` | Only scan files with a specific extension (e.g., `.cpp`). |
+| `-g` | `--graph` | Visualize results in a hierarchical directory tree. |
+| `-i` | `--ignore-case` | Perform case-insensitive matching. |
+| `-n` | `--line-number` | Prefix output with 1-based line numbers. |
+| `-r` | `--recursive` | Recursively scan subdirectories. |
+| `--color` | | Force ANSI color highlighting (default in TTY). |
+| `--no-color` | | Disable all color output. |
 
 ## Performance
 *Hyperfine benchmark on a local source code repository:*

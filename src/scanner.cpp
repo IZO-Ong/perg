@@ -1,8 +1,9 @@
 #include "perg/scanner.hpp"
+
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <regex>
-#include <cstring>
 
 namespace Perg {
 

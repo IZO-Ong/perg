@@ -6,18 +6,18 @@
 #include "perg/colors.hpp"
 #include "perg/thread_pool.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <future>
 #include <getopt.h>
 #include <iostream>
 #include <iomanip>
-#include <string>
-#include <unistd.h>
-#include <vector>
-#include <future>
-#include <mutex>
-#include <algorithm>
-#include <regex>
 #include <map>
+#include <mutex>
+#include <regex>
+#include <string>
+#include <vector>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -96,7 +96,7 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
             }
 
             std::string_view content = match.content;
-            size_t first = content.find_first_not_of(" \t\r\n"); // Strips spaces AND tabs
+            size_t first = content.find_first_not_of(" \t\r\n"); // strips spaces AND tabs
             if (first != std::string_view::npos) {
                 content.remove_prefix(first);
             } else {

@@ -1,36 +1,50 @@
 #!/bin/bash
 set -e
 
-INSTALL_DIR="/usr/local/bin"
+# Detect OS
+OS_TYPE="$(uname -s)"
 BINARY_NAME="perg"
+INSTALL_DIR="/usr/local/bin"
 MANIFEST_PATH="build/install_manifest.txt"
 
+# Determine Parallel Job Count
+if [[ "$OS_TYPE" == "Linux" ]]; then
+    JOBS=$(nproc)
+elif [[ "$OS_TYPE" == "Darwin" ]]; then
+    JOBS=$(sysctl -n hw.ncpu)
+else
+    JOBS=1 # Fallback for unknown environments
+fi
+
+# --- Uninstall Logic ---
 if [[ "$1" == "--uninstall" ]]; then
+    echo "Uninstalling $BINARY_NAME on $OS_TYPE..."
     if [ -f "$MANIFEST_PATH" ]; then
-        echo "Found CMake install manifest. Removing files..."
         sudo xargs rm -f < "$MANIFEST_PATH"
-        echo "Success! All installed files removed."
+        echo "Success! Removed files listed in manifest."
     else
-        echo "Manifest not found. Attempting manual removal of $BINARY_NAME..."
         sudo rm -f "$INSTALL_DIR/$BINARY_NAME"
-        echo "Done."
+        echo "Cleaned up $BINARY_NAME binary."
     fi
     exit 0
 fi
 
+# --- Build & Install Logic ---
 mkdir -p build
 cd build
 
-echo "Configuring with CMake..."
+echo "Configuring for $OS_TYPE..."
 cmake ..
 
-echo "Building $BINARY_NAME..."
-make -j$(nproc)
+echo "Building with $JOBS cores..."
+make -j"$JOBS"
 
 echo "Installing to $INSTALL_DIR..."
 sudo cp "$BINARY_NAME" "$INSTALL_DIR/"
+
+# Create/Update Manifest
 echo "$INSTALL_DIR/$BINARY_NAME" > install_manifest.txt
 
 echo "------------------------------------------------"
-echo "Success! Try running: $BINARY_NAME --help"
-echo "To uninstall later, run: ./install.sh --uninstall"
+echo "Success! $BINARY_NAME is now available on $OS_TYPE."
+echo "Run: $BINARY_NAME --help"
