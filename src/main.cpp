@@ -80,9 +80,8 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
             if (last_line_no != -1 && match.line_no > last_line_no + 1) {
                 if (options.context_before > 0 || options.context_after > 0) {
                     if (options.use_color) output_buffer += Perg::Colors::CYAN;
-                    output_buffer += "--";
+                    output_buffer += "--\n";
                     if (options.use_color) output_buffer += Perg::Colors::RESET;
-                    output_buffer += "\n";
                 }
             }
 
@@ -91,27 +90,40 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
                 std::string ln = std::to_string(match.line_no);
                 output_buffer += ln + std::string(std::max(0, 4 - (int)ln.length()), ' ');
                 if (options.use_color) output_buffer += Perg::Colors::RESET;
-                output_buffer += (match.is_context ? " - " : " : ");
+                
+                // add separator and one space
+                output_buffer += (match.is_context ? "- " : ": "); 
+            }
+
+            std::string_view content = match.content;
+            size_t first = content.find_first_not_of(" \t\r\n"); // Strips spaces AND tabs
+            if (first != std::string_view::npos) {
+                content.remove_prefix(first);
+            } else {
+                content = ""; 
             }
 
             if (!match.is_context && options.use_color) {
-                std::string content_str(match.content);
+                std::string content_str(content);
                 output_buffer += std::regex_replace(content_str, re, 
                              std::string(Perg::Colors::BOLD) + std::string(Perg::Colors::CYAN) + "$&" + std::string(Perg::Colors::RESET));
             } else {
-                output_buffer.append(match.content.data(), match.content.size());
+                output_buffer.append(content.data(), content.size());
             }
 
+            // 5. Filename Suffix
             if (options.print_filename) {
                 output_buffer += " | ";
                 if (options.use_color) output_buffer += Perg::Colors::MAGENTA;
                 output_buffer += filename;
                 if (options.use_color) output_buffer += Perg::Colors::RESET;
             }
+            
             output_buffer += "\n";
             last_line_no = match.line_no;
         }
         
+        // Chunked flush for performance
         if (output_buffer.size() > 8 * 1024 * 1024) {
             std::cout << output_buffer;
             output_buffer.clear();
