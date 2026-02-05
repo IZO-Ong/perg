@@ -85,6 +85,16 @@ count=$(grep -o "test" test_output.txt | wc -l)
 [ "$count" -eq 6 ]
 check_result $? "Expected 6 matches, got $count"
 
+it "Results Ordered by Ascending Line"
+LARGE_FILE="large_input.txt"
+for i in {1..1000}; do
+    echo "line $i: match_this" >> "$LARGE_FILE"
+done
+./build/perg --no-color "match_this" "$LARGE_FILE" | awk '{print $1}' > test_output.txt
+sort -n -c test_output.txt 2>/dev/null
+check_result $? "Lines are out of order (Parallel chunking sync failed)"
+rm "$LARGE_FILE"
+
 it "Missing File Error Handling"
 if ! ./build/perg --no-color "test" non_existent_file.txt 2>/dev/null; then
     check_result 0 "Properly caught missing file"
@@ -164,7 +174,7 @@ r_count=$(grep -c "target" test_output.txt)
 check_result $? "Expected 3 matches, got $r_count"
 
 it "Filename Suffix Check"
-./build/perg -n -r -F --no-color "target" "$TEST_DIR" > test_output.txt
+./build/perg -n -rf --no-color "target" "$TEST_DIR" > test_output.txt
 grep -qE "^1[[:space:]]+: target in root \| .*file1\.txt" test_output.txt && \
 grep -qE "^1[[:space:]]+: target in sub1 \| .*sub1/file2\.txt" test_output.txt
 check_result $? "Filename suffix pipe format failed"
@@ -182,7 +192,7 @@ check_result $? "Incorrect error message for directory"
 
 it "Extension Filter (-e .txt)"
 echo "target in log" > "$TEST_DIR/exclude_me.log"
-./build/perg -r -F -e ".txt" --no-color "target" "$TEST_DIR" > test_output.txt
+./build/perg -rf -e ".txt" --no-color "target" "$TEST_DIR" > test_output.txt
 grep -q "file1.txt" test_output.txt && ! grep -q "exclude_me.log" test_output.txt
 check_result $? "Filter -e failed to exclude .log"
 
