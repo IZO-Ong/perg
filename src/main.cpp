@@ -4,6 +4,7 @@
 #include "perg/search_engine.hpp"
 #include "perg/tree_renderer.hpp"
 #include "perg/colors.hpp"
+#include "perg/thread_pool.hpp"
 
 #include <filesystem>
 #include <getopt.h>
@@ -16,6 +17,7 @@
 #include <mutex>
 #include <algorithm>
 #include <regex>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -35,17 +37,15 @@ void print_help() {
               << "  -h,     --help             Show this detailed help message\n"
               << "  -i,     --ignore-case      Case-insensitive matching\n"
               << "  -n,     --line-number      Prefix output with 1-based line numbers\n"
-              << "  -N,     --no-line-number   Suppress line numbers\n"
               << "  -r,     --recursive        Recursively scan directories\n"
-              << "          --color/no-color   Toggle ANSI color highlighting\n\n"
-              << "Examples:\n"
-              << "  perg -r \"TODO:\" ./src         Recursive scan for TODOs in src directory\n"
-              << "  perg -g \"Scanner\" include     Visualize where 'Scanner' appears in headers\n"
-              << std::endl;
+              << "          --color/no-color   Toggle ANSI color highlighting\n\n";
 }
 
 void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptions& options, const std::string& pattern) {
     if (results.empty()) return;
+
+    std::string output_buffer;
+    output_buffer.reserve(1024 * 1024);
 
     std::map<std::string, Perg::FileResult> merged_map;
     for (auto& res : results) {
@@ -60,13 +60,14 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
     std::regex re(pattern, options.ignore_case ? std::regex::icase : std::regex::ECMAScript);
 
     for (auto& [filename, res] : merged_map) {
-        
         if (options.count_only) {
             if (options.print_filename) {
-                if (options.use_color) std::cout << Perg::Colors::MAGENTA << filename << Perg::Colors::RESET << ":";
-                else std::cout << filename << ":";
+                if (options.use_color) output_buffer += Perg::Colors::MAGENTA;
+                output_buffer += filename;
+                if (options.use_color) output_buffer += Perg::Colors::RESET;
+                output_buffer += ":";
             }
-            std::cout << res.total_matches << "\n";
+            output_buffer += std::to_string(res.total_matches) + "\n";
             continue;
         }
 
@@ -76,39 +77,47 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
 
         int last_line_no = -1;
         for (const auto& match : res.matches) {
-            // Context Separator "--"
             if (last_line_no != -1 && match.line_no > last_line_no + 1) {
                 if (options.context_before > 0 || options.context_after > 0) {
-                    if (options.use_color) std::cout << Perg::Colors::CYAN << "--" << Perg::Colors::RESET << "\n";
-                    else std::cout << "--\n";
+                    if (options.use_color) output_buffer += Perg::Colors::CYAN;
+                    output_buffer += "--";
+                    if (options.use_color) output_buffer += Perg::Colors::RESET;
+                    output_buffer += "\n";
                 }
             }
 
             if (options.print_line_numbers) {
-                if (options.use_color) std::cout << Perg::Colors::YELLOW;
-                std::cout << std::left << std::setw(4) << match.line_no;
-                if (options.use_color) std::cout << Perg::Colors::RESET;
-                std::cout << (match.is_context ? " - " : " : ");
+                if (options.use_color) output_buffer += Perg::Colors::YELLOW;
+                std::string ln = std::to_string(match.line_no);
+                output_buffer += ln + std::string(std::max(0, 4 - (int)ln.length()), ' ');
+                if (options.use_color) output_buffer += Perg::Colors::RESET;
+                output_buffer += (match.is_context ? " - " : " : ");
             }
 
             if (!match.is_context && options.use_color) {
                 std::string content_str(match.content);
-                std::cout << std::regex_replace(content_str, re, 
+                output_buffer += std::regex_replace(content_str, re, 
                              std::string(Perg::Colors::BOLD) + std::string(Perg::Colors::CYAN) + "$&" + std::string(Perg::Colors::RESET));
             } else {
-                std::cout << match.content;
+                output_buffer.append(match.content.data(), match.content.size());
             }
 
             if (options.print_filename) {
-                std::cout << " | ";
-                if (options.use_color) std::cout << Perg::Colors::MAGENTA << filename << Perg::Colors::RESET;
-                else std::cout << filename;
+                output_buffer += " | ";
+                if (options.use_color) output_buffer += Perg::Colors::MAGENTA;
+                output_buffer += filename;
+                if (options.use_color) output_buffer += Perg::Colors::RESET;
             }
-            
-            std::cout << "\n";
+            output_buffer += "\n";
             last_line_no = match.line_no;
         }
+        
+        if (output_buffer.size() > 8 * 1024 * 1024) {
+            std::cout << output_buffer;
+            output_buffer.clear();
+        }
     }
+    std::cout << output_buffer << std::flush;
 }
 
 int main(int argc, char* argv[]) {
@@ -156,10 +165,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // disable color if output is piped, unless specifically requested
     if (!stdout_is_tty && !color_explicitly_set) options.use_color = false;
-
     if (argc - optind < 1) return 1;
+
     std::string pattern = argv[optind];
     fs::path target_path = (optind + 1 < argc) ? argv[optind + 1] : ".";
 
@@ -170,8 +178,8 @@ int main(int argc, char* argv[]) {
         std::vector<std::unique_ptr<Perg::MmapFile>> mmap_cache;
         std::mutex results_mutex;
         unsigned int max_threads = std::thread::hardware_concurrency();
+        ThreadPool pool(max_threads);
 
-        // case 1: Single File Parallelism (Chunk-based)
         if (!options.recursive && fs::is_regular_file(target_path)) {
             auto file = std::make_unique<Perg::MmapFile>(target_path.string());
             std::string_view content = file->view();
@@ -194,24 +202,20 @@ int main(int argc, char* argv[]) {
                 }
                 if (start >= end) continue;
 
-                int start_line = 1 + std::count(content.begin(), content.begin() + start, '\n');
-                futures.push_back(std::async(std::launch::async, [&scanner, content, pattern, target_path, start_line, start, end]() {
+                futures.push_back(pool.enqueue([&scanner, content, pattern, target_path, start, end]() -> Perg::FileResult {
+                    int start_line = 1 + std::count(content.begin(), content.begin() + start, '\n');
                     return scanner.scan_chunk(content, pattern, target_path.string(), start_line, start, end);
                 }));
             }
             for (auto& f : futures) results.push_back(f.get());
             mmap_cache.push_back(std::move(file));
-        } 
-        // CASE 2: Recursive Parallelism (File-based)
-        else {
-            std::vector<std::future<void>> walk_futures;
+        } else {
+            std::vector<std::future<void>> task_futures;
             engine.walk(target_path, [&](const fs::path& p) {
-                if (!options.file_filter.empty() && p.extension() != options.file_filter) return;
-
-                walk_futures.push_back(std::async(std::launch::async, [&, p]() {
+                task_futures.push_back(pool.enqueue([&, p_str = p.string()]() {
                     try {
-                        auto file = std::make_unique<Perg::MmapFile>(p.string());
-                        auto res = scanner.scan_chunk(file->view(), pattern, p.string(), 1, 0, file->view().size());
+                        auto file = std::make_unique<Perg::MmapFile>(p_str);
+                        auto res = scanner.scan_chunk(file->view(), pattern, p_str, 1, 0, file->view().size());
                         if (!res.matches.empty() || options.count_only) {
                             std::lock_guard<std::mutex> lock(results_mutex);
                             results.push_back(std::move(res));
@@ -219,20 +223,10 @@ int main(int argc, char* argv[]) {
                         }
                     } catch (...) {}
                 }));
-
-                // Simple throttling to prevent OS thread exhaustion
-                if (walk_futures.size() >= max_threads * 2) {
-                    for (auto it = walk_futures.begin(); it != walk_futures.end(); ) {
-                        if (it->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                            it->get(); it = walk_futures.erase(it);
-                        } else ++it;
-                    }
-                }
             });
-            for (auto& f : walk_futures) if (f.valid()) f.get();
+            for (auto& f : task_futures) f.get();
         }
 
-        // Final sort to ensure deterministic regression logs
         std::sort(results.begin(), results.end(), [](const auto& a, const auto& b){ return a.filename < b.filename; });
 
         if (options.visualize_graph && !results.empty()) {
@@ -246,6 +240,5 @@ int main(int argc, char* argv[]) {
         std::cerr << "Fatal Error: " << e.what() << std::endl;
         return 1;
     }
-
     return 0;
 }

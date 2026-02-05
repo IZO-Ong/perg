@@ -1,11 +1,12 @@
 #include "perg/scanner.hpp"
 #include <algorithm>
+#include <functional>
 #include <regex>
 #include <cstring>
 
 namespace Perg {
 
-    // Helper: Optimized newline counting using SIMD-accelerated memchr
+    // newline counting using memchr
     inline int count_newlines_fast(const char* start, const char* end) {
         int count = 0;
         const char* p = start;
@@ -59,7 +60,7 @@ namespace Perg {
         int current_line_no = start_line;
         bool use_fast_path = is_literal(pattern) && !options_.ignore_case;
 
-        // Optimization: Pre-compile Regex once per chunk instead of inside the match loop
+        // pre-compile regex once per chunk
         std::regex re;
         if (!use_fast_path) {
             std::regex_constants::syntax_option_type flags = std::regex::ECMAScript | std::regex::optimize;
@@ -68,7 +69,7 @@ namespace Perg {
         }
 
         auto add_match_context = [&](size_t pos_in_chunk) {
-            // Optimization: Incremental line counting using SIMD fast-path
+            // incremental line counting using SIMD fast-path
             current_line_no += count_newlines_fast(search_view.data() + last_line_count_pos, 
                                                    search_view.data() + pos_in_chunk);
             last_line_count_pos = pos_in_chunk;
@@ -80,7 +81,7 @@ namespace Perg {
             size_t line_end = full_content.find('\n', global_pos);
             if (line_end == std::string_view::npos) line_end = full_content.size();
 
-            // 1. Before Context
+            // before Context
             for (int i = options_.context_before; i > 0; --i) {
                 size_t c_start = find_backward_nl(full_content, line_start > 0 ? line_start - 1 : 0, i);
                 size_t c_end = full_content.find('\n', c_start);
@@ -89,10 +90,10 @@ namespace Perg {
                 }
             }
 
-            // 2. The Match
+            // match
             file_res.matches.push_back({current_line_no, full_content.substr(line_start, line_end - line_start), false});
 
-            // 3. After Context
+            // after context
             size_t next_line = line_end + 1;
             for (int i = 1; i <= options_.context_after; ++i) {
                 if (next_line >= full_content.size()) break;
@@ -106,19 +107,30 @@ namespace Perg {
         };
 
         if (use_fast_path) {
-            // Optimization: Literal search uses compiler-optimized memmem/memchr
-            size_t pos = search_view.find(pattern, 0);
-            while (pos != std::string_view::npos) {
+            std::boyer_moore_searcher searcher(pattern.begin(), pattern.end());
+
+            auto it = std::search(search_view.begin(), search_view.end(), searcher);
+            
+            while (it != search_view.end()) {
+                size_t pos = std::distance(search_view.begin(), it);
                 size_t line_end_in_chunk = add_match_context(pos);
                 
-                // Count all occurrences on the current line efficiently
-                size_t sub_pos = pos;
                 size_t line_end_global = range_start + line_end_in_chunk;
-                while (sub_pos != std::string_view::npos && (range_start + sub_pos) < line_end_global) {
+                auto sub_it = it;
+                
+                while (sub_it != search_view.end() && (range_start + std::distance(search_view.begin(), sub_it)) < line_end_global) {
                     file_res.total_matches++;
-                    sub_pos = search_view.find(pattern, sub_pos + pattern.length());
+                    auto next_start = sub_it + pattern.length();
+                    if (next_start >= search_view.end()) {
+                        sub_it = search_view.end();
+                        break;
+                    }
+                    sub_it = std::search(next_start, search_view.end(), searcher);
                 }
-                pos = search_view.find(pattern, line_end_in_chunk);
+
+                auto next_line_it = search_view.begin() + line_end_in_chunk;
+                if (next_line_it >= search_view.end()) break;
+                it = std::search(next_line_it, search_view.end(), searcher);
             }
         } else {
             auto it = std::cregex_iterator(search_view.begin(), search_view.end(), re);
