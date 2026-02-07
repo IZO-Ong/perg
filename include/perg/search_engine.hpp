@@ -4,15 +4,25 @@
 #include <functional>
 
 namespace Perg {
-    class SearchEngine {
-    public:
-        explicit SearchEngine(const ScanOptions& options) : options_(options) {}
 
-        // walks path and executes the callback for each file found
-        void walk(const std::filesystem::path& root, 
-                  std::function<void(const std::filesystem::path&)> callback);
+/**
+ * @class SearchEngine
+ * @brief Handles filesystem traversal and file discovery logic.
+ */
+class SearchEngine {
+public:
+    explicit SearchEngine(const ScanOptions& options) : options_(options) {}
 
-    private:
-        ScanOptions options_;
-    };
-}
+    /**
+     * @brief Recursively or shallowly traverses a path.
+     * @param root Starting path.
+     * @param callback Function to execute for every valid file found.
+     */
+    void walk(const std::filesystem::path& root, 
+              std::function<void(const std::filesystem::path&)> callback);
+
+private:
+    ScanOptions options_;
+};
+
+} // namespace Perg

@@ -77,9 +77,9 @@ perg -in "virtual"
 
 | Tool | Mean Time | Speedup |
 | :--- | :--- | :--- |
-| **grep** | 2.0 ms | 1.0x |
-| **ripgrep (rg)** | 105.6 ms | 52.8x |
-| **perg** | 474.5 ms | 237.2x |
+| **grep** | 2.3 ms | 1.0x |
+| **ripgrep (rg)** | 127.6 ms | 12.2x |
+| **perg** | 378.3 ms | 34.6x |
 
 ---
 

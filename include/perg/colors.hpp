@@ -9,5 +9,4 @@ namespace Perg::Colors {
     constexpr std::string_view MAGENTA = "\033[35m";
     constexpr std::string_view CYAN    = "\033[36m";
     constexpr std::string_view BOLD    = "\033[1m";
-    constexpr std::string_view BOLD_MAGENTA = "\033[1;35m"; 
 }

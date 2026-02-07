@@ -1,17 +1,27 @@
 #ifndef THREAD_POOL_HPP
 #define THREAD_POOL_HPP
 
-#include <vector>
-#include <queue>
-#include <thread>
-#include <mutex>
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <mutex>
+#include <vector>
+#include <queue>
+#include <thread>
 #include <type_traits>
 
+/**
+ * @class ThreadPool
+ * @brief A fixed-size pool of worker threads for parallel task execution.
+ * This class uses a thread-safe task queue and a condition variable to 
+ * distribute work across a fixed number of threads.
+ */
 class ThreadPool {
 public:
+    /**
+     * @brief Initializes the pool and starts worker threads.
+     * @param threads Number of worker threads to spawn.
+     */
     explicit ThreadPool(size_t threads) : stop(false) {
         for(size_t i = 0; i < threads; ++i)
             workers.emplace_back([this] {
@@ -31,7 +41,14 @@ public:
             });
     }
 
-    // Modernized using std::invoke_result_t (C++17)
+    /**
+     * @brief Enqueues a task for execution in the pool.
+     * @tparam F Function type.
+     * @tparam Args Argument types.
+     * @return A std::future to retrieve the task result.
+     * @note Template definitions must reside in the header to allow 
+     * the compiler to instantiate them for specific caller types.
+     */
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args) 
         -> std::future<std::invoke_result_t<F, Args...>> 
@@ -52,6 +69,9 @@ public:
         return res;
     }
 
+    /**
+     * @brief Signals workers to stop and joins all threads.
+     */
     ~ThreadPool() {
         {
             std::unique_lock<std::mutex> lock(queue_mutex);

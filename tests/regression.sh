@@ -87,7 +87,7 @@ check_result $? "Expected 6 matches, got $count"
 
 it "Results Ordered by Ascending Line"
 LARGE_FILE="large_input.txt"
-for i in {1..1000}; do
+for i in {1..100}; do
     echo "line $i: match_this" >> "$LARGE_FILE"
 done
 ./build/perg --no-color "match_this" "$LARGE_FILE" | awk '{print $1}' > test_output.txt

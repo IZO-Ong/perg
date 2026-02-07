@@ -21,6 +21,9 @@
 
 namespace fs = std::filesystem;
 
+/**
+ * @brief Displays the command-line interface usage and options.
+ */
 void print_help() {
     std::cout << "PERG - Pattern Enumeration & Regex Generator\n"
               << "A high-performance, zero-copy regex pattern scanner using memory mapping.\n\n"
@@ -41,12 +44,22 @@ void print_help() {
               << "          --color/no-color   Toggle ANSI color highlighting\n\n";
 }
 
+/**
+ * @brief Merges and formats scan results for terminal output.
+ * This function aggregates partial results from different chunks, sorts them 
+ * chronologically by line number, and handles the ANSI color formatting. 
+ * Results are buffered to minimize expensive syscalls to stdout.
+ * @param results Vector of raw results returned from the Scanner.
+ * @param options User-defined scan and display options.
+ * @param pattern The original search pattern for highlighting.
+ */
 void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptions& options, const std::string& pattern) {
     if (results.empty()) return;
 
     std::string output_buffer;
     output_buffer.reserve(1024 * 1024);
 
+    // Merge partial chunk results into a single entry per filename
     std::map<std::string, Perg::FileResult> merged_map;
     for (auto& res : results) {
         auto& entry = merged_map[res.filename];
@@ -77,6 +90,7 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
 
         int last_line_no = -1;
         for (const auto& match : res.matches) {
+            // Insert visual separator for disjoint context blocks
             if (last_line_no != -1 && match.line_no > last_line_no + 1) {
                 if (options.context_before > 0 || options.context_after > 0) {
                     if (options.use_color) output_buffer += Perg::Colors::CYAN;
@@ -90,13 +104,11 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
                 std::string ln = std::to_string(match.line_no);
                 output_buffer += ln + std::string(std::max(0, 4 - (int)ln.length()), ' ');
                 if (options.use_color) output_buffer += Perg::Colors::RESET;
-                
-                // add separator and one space
                 output_buffer += (match.is_context ? "- " : ": "); 
             }
 
             std::string_view content = match.content;
-            size_t first = content.find_first_not_of(" \t\r\n"); // strips spaces AND tabs
+            size_t first = content.find_first_not_of(" \t\r\n"); 
             if (first != std::string_view::npos) {
                 content.remove_prefix(first);
             } else {
@@ -111,7 +123,6 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
                 output_buffer.append(content.data(), content.size());
             }
 
-            // 5. Filename Suffix
             if (options.print_filename) {
                 output_buffer += " | ";
                 if (options.use_color) output_buffer += Perg::Colors::MAGENTA;
@@ -123,7 +134,7 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
             last_line_no = match.line_no;
         }
         
-        // Chunked flush for performance
+        // Chunked flush to prevent massive memory usage on huge result sets
         if (output_buffer.size() > 8 * 1024 * 1024) {
             std::cout << output_buffer;
             output_buffer.clear();
@@ -132,6 +143,9 @@ void print_results(std::vector<Perg::FileResult>& results, const Perg::ScanOptio
     std::cout << output_buffer << std::flush;
 }
 
+/**
+ * @brief Entry point for PERG. Parses arguments and dispatches tasks to the ThreadPool.
+ */
 int main(int argc, char* argv[]) {
     Perg::ScanOptions options;
     bool stdout_is_tty = isatty(STDOUT_FILENO);
@@ -187,6 +201,8 @@ int main(int argc, char* argv[]) {
         Perg::Scanner scanner(options);
         Perg::SearchEngine engine(options);
         std::vector<Perg::FileResult> results;
+        
+        // Cache mmap objects to keep backing memory alive until printing is finished
         std::vector<std::unique_ptr<Perg::MmapFile>> mmap_cache;
         std::mutex results_mutex;
         unsigned int max_threads = std::thread::hardware_concurrency();
@@ -204,6 +220,7 @@ int main(int argc, char* argv[]) {
                 if (start >= total_size) break;
                 size_t end = std::min(total_size, (i + 1) * chunk_size);
                 
+                // Align chunks to newline boundaries to ensure atomic line processing
                 if (i > 0) {
                     size_t next_nl = content.find('\n', start);
                     start = (next_nl == std::string_view::npos) ? total_size : next_nl + 1;
@@ -222,6 +239,7 @@ int main(int argc, char* argv[]) {
             for (auto& f : futures) results.push_back(f.get());
             mmap_cache.push_back(std::move(file));
         } else {
+            // Recursive directory walk where each file is treated as an independent task
             std::vector<std::future<void>> task_futures;
             engine.walk(target_path, [&](const fs::path& p) {
                 task_futures.push_back(pool.enqueue([&, p_str = p.string()]() {
