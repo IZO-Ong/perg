@@ -9,7 +9,6 @@ namespace Perg {
 
 /**
  * @brief Rapidly counts newline characters in a memory block using SIMD-optimized memchr.
- * @return The total number of '\n' characters found.
  */
 inline int count_newlines(const char* start, const char* end) {
     int count = 0;
@@ -24,20 +23,32 @@ inline int count_newlines(const char* start, const char* end) {
 }
 
 /**
- * @brief Heuristically determines if a file is binary by checking for null bytes.
- * @note Only scans the first 1024 bytes for performance; typical of grep-like tools.
+ * @brief Finds the start of the current line by scanning backwards for a newline.
  */
+inline const char* find_line_start(const char* begin, const char* match) {
+    if (begin == match) return begin;
+    
+    const char* last_nl = static_cast<const char*>(
+        memrchr(begin, '\n', match - begin)
+    );
+    
+    return last_nl ? last_nl + 1 : begin;
+}
+
+/**
+ * @brief Finds the end of the current line by scanning forwards for a newline.
+ */
+inline const char* find_line_end(const char* match, const char* end) {
+    const char* next_nl = static_cast<const char*>(std::memchr(match, '\n', end - match));
+    return next_nl ? next_nl : end;
+}
+
 bool is_binary(std::string_view content) {
     size_t check_limit = std::min(content.size(), (size_t)1024);
     if (check_limit == 0) return false;
     return std::memchr(content.data(), '\0', check_limit) != nullptr;
 }
 
-/**
- * @brief Searches backwards for the Nth newline character.
- * @details Used to "bleed" into previous chunks to retrieve leading context 
- * when a match occurs at the very start of a thread's assigned range.
- */
 size_t find_backward_nl(std::string_view content, size_t pos, int n) {
     if (n <= 0 || pos == 0 || pos >= content.size()) return 0;
     size_t current = pos;
@@ -51,25 +62,15 @@ size_t find_backward_nl(std::string_view content, size_t pos, int n) {
     return 0;
 }
 
-/**
- * @brief Identifies if a string is a literal or contains regex meta-characters.
- * @return True if the string can be searched using fast literal-matching algorithms.
- */
 bool is_literal(const std::string& p) {
     return p.find_first_of(".+*?^$()[]{}|\\") == std::string::npos;
 }
 
 /**
- * @brief Core scanning logic for a specific memory chunk.
- * * This function implements a "Bleed-Both-Ways" strategy to ensure context is 
- * captured even across thread boundaries.
- * * @param full_content The entire memory-mapped file view.
- * @param pattern The search string or regex.
- * @param filename The name of the file (for result labeling).
- * @param start_line The 1-based line number where this chunk theoretically starts.
- * @param range_start The byte offset where this thread's responsibility begins.
- * @param range_end The byte offset where this thread's responsibility ends.
- * @return A FileResult containing all matches found within the responsibility zone.
+ * @brief Core scanning logic using a Search-First optimization.
+ * * Instead of scanning every line for a newline character, we scan for the pattern
+ * directly in the memory block. We only resolve line numbers and boundaries 
+ * on-demand when a match is found.
  */
 FileResult Scanner::scan_chunk(std::string_view full_content, const std::string& pattern, 
                                const std::string& filename, int start_line, 
@@ -78,8 +79,7 @@ FileResult Scanner::scan_chunk(std::string_view full_content, const std::string&
     file_res.filename = filename;
     if (range_end == std::string_view::npos) range_end = full_content.size();
 
-    // Establish a search area that includes context padding outside the 
-    // thread's main responsibility range.
+    // Bleed calculation for context and cross-thread safety
     size_t scan_start = range_start;
     if (!options_.count_only && options_.context_before > 0 && range_start > 0) {
         scan_start = find_backward_nl(full_content, range_start - 1, options_.context_before);
@@ -99,22 +99,14 @@ FileResult Scanner::scan_chunk(std::string_view full_content, const std::string&
     std::string_view search_view = full_content.substr(scan_start, scan_end - scan_start);
     if (is_binary(search_view)) return file_res;
 
-    // Recalculate line numbers to account for the 'before' bleed area
+    // Line number synchronization
+    const char* chunk_begin = search_view.data();
+    const char* chunk_end = chunk_begin + search_view.size();
+    const char* last_newline_counted_ptr = chunk_begin;
     int current_line_no = start_line - count_newlines(full_content.data() + scan_start, 
-                                                           full_content.data() + range_start);
-    
-    const char* current = search_view.data();
-    const char* end = search_view.data() + search_view.size();
-    int last_added_line_no = -1;
-    int after_context_remaining = 0;
-
-    std::vector<std::pair<int, std::string_view>> before_buffer;
-    if (!options_.count_only && options_.context_before > 0) before_buffer.reserve(options_.context_before);
+                                                      full_content.data() + range_start);
 
     bool use_fast_path = is_literal(pattern) && !options_.ignore_case;
-    
-    // thread_local regex objects avoid the massive overhead of re-compiling 
-    // the regex for every chunk while remaining thread-safe
     static thread_local std::regex re; 
     static thread_local std::string last_pattern;
     if (!use_fast_path && last_pattern != pattern) {
@@ -123,75 +115,104 @@ FileResult Scanner::scan_chunk(std::string_view full_content, const std::string&
         last_pattern = pattern;
     }
 
-    while (current < end) {
-        const char* next_nl = static_cast<const char*>(std::memchr(current, '\n', end - current));
-        const char* line_end = next_nl ? next_nl : end;
-        std::string_view current_line(current, line_end - current);
+    const char* current_search_ptr = chunk_begin;
+    int last_added_line_no = -1;
 
-        // is_in_zone ensures that if a match occurs in a bleed area, only 
-        // the thread actually 'owning' that byte range counts it. 
-        size_t current_offset = current - full_content.data();
-        bool is_in_zone = (current_offset >= range_start && current_offset < range_end);
+    // --- MAIN SEARCH LOOP ---
+    while (current_search_ptr < chunk_end) {
+        const char* match_ptr = nullptr;
 
-        size_t occurrences_on_this_line = 0;
         if (use_fast_path) {
-            size_t pos = current_line.find(pattern, 0);
-            while (pos != std::string_view::npos) {
-                occurrences_on_this_line++;
-                pos = current_line.find(pattern, pos + pattern.length());
-            }
+            // High-speed literal search
+            match_ptr = (const char*)memmem(current_search_ptr, chunk_end - current_search_ptr, 
+                                            pattern.data(), pattern.size());
         } else {
-            auto words_begin = std::cregex_iterator(current_line.begin(), current_line.end(), re);
-            auto words_end = std::cregex_iterator();
-            occurrences_on_this_line = std::distance(words_begin, words_end);
+            // Regex search (remains line-oriented due to std::regex constraints)
+            const char* next_nl = (const char*)std::memchr(current_search_ptr, '\n', chunk_end - current_search_ptr);
+            const char* eol = next_nl ? next_nl : chunk_end;
+            if (std::regex_search(current_search_ptr, eol, re)) {
+                match_ptr = current_search_ptr;
+            }
+            if (!match_ptr) {
+                if (!next_nl) break;
+                current_search_ptr = next_nl + 1;
+                continue;
+            }
         }
 
-        if (occurrences_on_this_line > 0 && is_in_zone) {
-            file_res.total_matches += occurrences_on_this_line;
+        if (!match_ptr) break;
+
+        // Resolve line context
+        const char* line_start = find_line_start(chunk_begin, match_ptr);
+        const char* line_end = find_line_end(match_ptr, chunk_end);
+        std::string_view current_line(line_start, line_end - line_start);
+
+        // Sync line number to current match
+        current_line_no += count_newlines(last_newline_counted_ptr, line_start);
+        last_newline_counted_ptr = line_start;
+
+        // Responsibility check: Match must start within the thread's assigned range
+        size_t match_offset = line_start - full_content.data();
+        if (match_offset >= range_start && match_offset < range_end) {
+            
+            // Count all occurrences on this line
+            size_t occurrences = 1;
+            if (use_fast_path) {
+                size_t p = current_line.find(pattern, (match_ptr - line_start) + pattern.size());
+                while (p != std::string_view::npos) {
+                    occurrences++;
+                    p = current_line.find(pattern, p + pattern.size());
+                }
+            }
+            file_res.total_matches += occurrences;
 
             if (!options_.count_only) {
-                for (const auto& b : before_buffer) {
-                    if (b.first > last_added_line_no) {
-                        file_res.matches.push_back({b.first, b.second, true});
-                        last_added_line_no = b.first;
+                // Before-Context
+                if (options_.context_before > 0) {
+                    const char* ctx_ptr = line_start - 1;
+                    std::vector<MatchRecord> before_ctx;
+                    for (int i = 0; i < options_.context_before && ctx_ptr >= chunk_begin; ++i) {
+                        const char* cs = find_line_start(chunk_begin, ctx_ptr);
+                        int clno = current_line_no - (i + 1);
+                        if (clno <= last_added_line_no) break;
+                        before_ctx.push_back({clno, std::string_view(cs, ctx_ptr - cs + 1), true});
+                        ctx_ptr = cs - 1;
+                    }
+                    for (auto it = before_ctx.rbegin(); it != before_ctx.rend(); ++it) {
+                        file_res.matches.push_back(*it);
+                        last_added_line_no = it->line_no;
                     }
                 }
-                before_buffer.clear();
 
+                // The Match Line
                 if (current_line_no > last_added_line_no) {
                     file_res.matches.push_back({current_line_no, current_line, false});
                     last_added_line_no = current_line_no;
                 } else if (!file_res.matches.empty() && file_res.matches.back().line_no == current_line_no) {
-                    file_res.matches.back().is_context = false; 
+                    file_res.matches.back().is_context = false;
                 }
-                after_context_remaining = options_.context_after;
-            }
-        } 
-        else if (!options_.count_only) {
-            if (after_context_remaining > 0) {
-                if (current_line_no > last_added_line_no) {
-                    file_res.matches.push_back({current_line_no, current_line, true});
-                    last_added_line_no = current_line_no;
+
+                // After-Context
+                if (options_.context_after > 0) {
+                    const char* ctx_ptr = line_end + 1;
+                    for (int i = 0; i < options_.context_after && ctx_ptr < chunk_end; ++i) {
+                        const char* ce = find_line_end(ctx_ptr, chunk_end);
+                        int clno = current_line_no + (i + 1);
+                        file_res.matches.push_back({clno, std::string_view(ctx_ptr, ce - ctx_ptr), true});
+                        last_added_line_no = clno;
+                        ctx_ptr = ce + 1;
+                    }
                 }
-                after_context_remaining--;
-            } 
-            else if (options_.context_before > 0) {
-                if ((int)before_buffer.size() >= options_.context_before) before_buffer.erase(before_buffer.begin());
-                before_buffer.push_back({current_line_no, current_line});
             }
         }
 
-        if (!next_nl) break;
-        current = next_nl + 1;
-        current_line_no++;
+        // Advance to next line
+        current_search_ptr = line_end + (line_end < chunk_end ? 1 : 0);
     }
 
     return file_res;
 }
 
-/**
- * @brief Scans an entire file view as a single chunk.
- */
 FileResult Scanner::scan(std::string_view content, const std::string& pattern, const std::string& filename) {
     return scan_chunk(content, pattern, filename, 1, 0, content.size());
 }
